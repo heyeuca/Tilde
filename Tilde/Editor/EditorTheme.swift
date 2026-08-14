@@ -31,13 +31,30 @@ enum EditorTheme {
             : .systemFont(ofSize: size)
     }
 
+    static func lineSpacing(for font: NSFont) -> CGFloat {
+        let lineHeight = font.ascender - font.descender + font.leading
+        return ((lineHeightMultiple - 1) * lineHeight).rounded()
+    }
+
     /// Line rhythm via `lineSpacing` (space between lines) rather than
     /// `lineHeightMultiple` (taller line boxes): a taller line box makes the
     /// insertion point 1.5× the text height, which looks wrong.
     static func paragraphStyle(for font: NSFont) -> NSParagraphStyle {
         let style = NSMutableParagraphStyle()
-        let lineHeight = font.ascender - font.descender + font.leading
-        style.lineSpacing = ((lineHeightMultiple - 1) * lineHeight).rounded()
+        style.lineSpacing = lineSpacing(for: font)
+        return style
+    }
+
+    /// Empty lines carry their extra space as `paragraphSpacingBefore`
+    /// instead of `lineSpacing`: TextKit 2 places lineSpacing above each
+    /// line but swallows it INTO an empty line's line box (oversized caret,
+    /// baseline hugging the previous line). spacingBefore keeps the
+    /// baseline rhythm perfectly uniform and the caret text-height —
+    /// verified empirically with a layout probe over all five spacing
+    /// placements.
+    static func emptyLineParagraphStyle(for font: NSFont) -> NSParagraphStyle {
+        let style = NSMutableParagraphStyle()
+        style.paragraphSpacingBefore = lineSpacing(for: font)
         return style
     }
 

@@ -234,12 +234,17 @@ final class MarkdownStyler: NSObject, NSTextStorageDelegate {
             textOnly.length -= 1
         }
 
-        // Empty lines drop the lineSpacing: the insertion caret on an empty
-        // line spans the whole line box including the spacing, which reads
-        // as an oversized caret. The blank line itself already provides the
-        // paragraph gap.
+        // Empty lines swap lineSpacing for paragraphSpacing: the insertion
+        // caret spans the line box including lineSpacing (oversized caret),
+        // while paragraphSpacing sits outside the line box — same uniform
+        // row rhythm, text-height caret.
         if textOnly.length == 0, !insideFence {
-            storage.addAttribute(.paragraphStyle, value: NSParagraphStyle.default, range: line)
+            let font = EditorTheme.bodyFont(monospaced: usesMonospacedBody, size: fontSize)
+            storage.addAttribute(
+                .paragraphStyle,
+                value: EditorTheme.emptyLineParagraphStyle(for: font),
+                range: line
+            )
             return
         }
 
