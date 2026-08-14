@@ -100,12 +100,38 @@ final class LineNumberRulerView: NSRulerView {
             let label = NSAttributedString(string: String(current), attributes: attributes)
             let labelSize = label.size()
             let y = convert(NSPoint(x: 0, y: yInTextView), from: textView).y
-            // Center against the fragment's first text line (wrapped
-            // paragraphs are numbered once, at their top).
-            let firstLineHeight = fragment.textLineFragments.first?.typographicBounds.height ?? frame.height
+            // Align the number's baseline with the text baseline of the
+            // fragment's first line (wrapped paragraphs are numbered once).
+            var labelY = y
+            if let firstLine = fragment.textLineFragments.first {
+                // The LINE's own font (headings are larger, empty lines carry
+                // body attributes) — alignment must follow it, not the body.
+                let fallbackFont = (textView.typingAttributes[.font] as? NSFont)
+                    ?? EditorTheme.bodyFont(monospaced: false, size: EditorTheme.defaultFontSize)
+                let lineFont: NSFont = {
+                    guard let storage = textView.textStorage, offset < storage.length else { return fallbackFont }
+                    return storage.attribute(.font, at: offset, effectiveRange: nil) as? NSFont ?? fallbackFont
+                }()
+
+                let bounds = firstLine.typographicBounds
+                let baseline: CGFloat
+                if firstLine.characterRange.length > 1 || firstLine.glyphOrigin.y > 0 {
+                    baseline = bounds.minY + firstLine.glyphOrigin.y
+                } else {
+                    // Empty line: no glyphs to anchor to, so derive the
+                    // baseline from the line font's own metrics.
+                    baseline = bounds.minY + lineFont.ascender
+                }
+                // Optical centering: the gutter font is smaller than the
+                // line's text, so raw baseline alignment sits visually low.
+                // Align the cap-height centers instead — this degrades to
+                // plain baseline alignment when the sizes match.
+                let capCentering = (lineFont.capHeight - EditorTheme.gutterFont.capHeight) / 2
+                labelY = y + baseline - capCentering - EditorTheme.gutterFont.ascender
+            }
             label.draw(at: NSPoint(
                 x: ruleThickness - labelSize.width - 8,
-                y: y + (firstLineHeight - labelSize.height) / 2
+                y: labelY
             ))
 
             lineNumber = current + 1

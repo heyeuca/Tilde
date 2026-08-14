@@ -31,17 +31,22 @@ enum EditorTheme {
             : .systemFont(ofSize: size)
     }
 
-    static var paragraphStyle: NSParagraphStyle {
+    /// Line rhythm via `lineSpacing` (space between lines) rather than
+    /// `lineHeightMultiple` (taller line boxes): a taller line box makes the
+    /// insertion point 1.5× the text height, which looks wrong.
+    static func paragraphStyle(for font: NSFont) -> NSParagraphStyle {
         let style = NSMutableParagraphStyle()
-        style.lineHeightMultiple = lineHeightMultiple
+        let lineHeight = font.ascender - font.descender + font.leading
+        style.lineSpacing = ((lineHeightMultiple - 1) * lineHeight).rounded()
         return style
     }
 
     /// The uniform attributes for body text.
     static func bodyAttributes(monospaced: Bool, size: CGFloat) -> [NSAttributedString.Key: Any] {
-        [
-            .font: bodyFont(monospaced: monospaced, size: size),
-            .paragraphStyle: paragraphStyle,
+        let font = bodyFont(monospaced: monospaced, size: size)
+        return [
+            .font: font,
+            .paragraphStyle: paragraphStyle(for: font),
             .foregroundColor: NSColor.textColor,
         ]
     }

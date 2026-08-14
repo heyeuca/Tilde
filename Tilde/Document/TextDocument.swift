@@ -4,6 +4,7 @@
 //
 
 import SwiftUI
+import AppKit
 import UniformTypeIdentifiers
 
 extension UTType {
@@ -13,11 +14,12 @@ extension UTType {
 
 /// A plain-text document.
 ///
-/// A reference type (`ReferenceFileDocument`) so the editor can push edits
-/// without copying the whole buffer through SwiftUI value semantics on
-/// every keystroke.
+/// The document owns the `NSTextStorage` and the text view renders it
+/// directly — keystrokes never copy the buffer through SwiftUI. The
+/// content is materialized as a `String` only when a save snapshot is
+/// taken (DESIGN.md §1).
 final class TextDocument: ReferenceFileDocument {
-    @Published var text: String
+    let textStorage: NSTextStorage
 
     /// Captured at load, preserved on save.
     private(set) var encoding: FileEncoding
@@ -27,10 +29,14 @@ final class TextDocument: ReferenceFileDocument {
     /// New documents are plain text until saved with a Markdown extension.
     private(set) var isMarkdown: Bool
 
-    static var readableContentTypes: [UTType] { [.markdown, .plainText] }
+    /// `.plainText` first: new documents default to `.txt` in the save panel.
+    /// `.text` admits the broader family (JSON, YAML, XML, …) via Open With —
+    /// all treated as plain text (PRODUCT.md §6). Writable types stay equal
+    /// to readable so every file that opens can also be saved back.
+    static var readableContentTypes: [UTType] { [.plainText, .markdown, .text] }
 
     init() {
-        text = ""
+        textStorage = NSTextStorage()
         encoding = .default
         lineEnding = .lf
         isMarkdown = false
@@ -42,14 +48,14 @@ final class TextDocument: ReferenceFileDocument {
         }
         let decoded = FileEncoding.decode(data)
         let normalized = LineEnding.normalizeToLF(decoded.string)
-        text = normalized.text
+        textStorage = NSTextStorage(string: normalized.text)
         encoding = decoded.encoding
         lineEnding = normalized.lineEnding
         isMarkdown = configuration.contentType.conforms(to: .markdown)
     }
 
     func snapshot(contentType: UTType) throws -> String {
-        text
+        textStorage.string
     }
 
     func fileWrapper(snapshot: String, configuration: WriteConfiguration) throws -> FileWrapper {

@@ -11,18 +11,19 @@ import AppKit
 /// and recede visually. Styling is line-based with a small set of inline
 /// rules; it is deliberately not a full Markdown parser (PRODUCT.md §27).
 ///
-/// On each edit only the touched paragraphs are restyled. Fenced code blocks
-/// are the one piece of cross-line state: fence lines are located with a fast
-/// substring search, and when the number of fences changes the whole document
-/// is restyled once.
+/// Performance model (PRODUCT.md §28): on each edit only the touched
+/// paragraphs are restyled. Fenced code blocks are the one piece of
+/// cross-line state; fence-line positions are cached and updated
+/// incrementally (shift by the edit delta, rescan only the edited
+/// paragraphs), so a keystroke never scans the whole document.
 final class MarkdownStyler: NSObject, NSTextStorageDelegate {
 
     /// Current body font size; heading/code sizes derive from it.
     var fontSize: CGFloat = EditorTheme.defaultFontSize
 
-    /// Signature of the last-seen fence structure. When it changes, a fence
-    /// was opened or closed and everything after it may flip meaning.
-    private var fenceCount = -1
+    /// Sorted ranges of ``` fence-marker lines, kept in sync across edits.
+    private var fenceCache: [NSRange]?
+    private var cachedLength = 0
 
     // MARK: - NSTextStorageDelegate
 
@@ -34,57 +35,115 @@ final class MarkdownStyler: NSObject, NSTextStorageDelegate {
     ) {
         // Attribute-only edits are our own styling; only react to characters.
         guard editedMask.contains(.editedCharacters) else { return }
-        restyle(around: editedRange, in: textStorage)
+        restyle(in: textStorage, editedRange: editedRange, delta: delta)
     }
 
     // MARK: - Styling entry points
 
     func restyleAll(_ textStorage: NSTextStorage) {
-        fenceCount = -1
-        restyle(around: NSRange(location: 0, length: textStorage.length), in: textStorage)
+        fenceCache = nil
+        restyle(in: textStorage, editedRange: nil, delta: 0)
     }
 
-    private func restyle(around editedRange: NSRange, in textStorage: NSTextStorage) {
-        let string = textStorage.string as NSString
-        guard string.length > 0 else { return }
+    private func restyle(in textStorage: NSTextStorage, editedRange: NSRange?, delta: Int) {
+        // mutableString is the backing store — no bridging copy per edit.
+        let string: NSString = textStorage.mutableString
+        guard string.length > 0 else {
+            fenceCache = []
+            cachedLength = 0
+            return
+        }
 
-        let fences = Self.fenceLines(in: string)
+        // Splitting a line (typing a newline) leaves the tail in a NEW
+        // paragraph that paragraphRange(for: editedRange) would miss:
+        // probe one character past the edit so that paragraph is included.
+        var window: NSRange?
+        if let editedRange {
+            var probe = editedRange
+            if NSMaxRange(probe) < string.length { probe.length += 1 }
+            window = string.paragraphRange(for: probe)
+        }
+
+        let previousFenceCount = fenceCache?.count
+        let fences = updatedFenceLines(string: string, window: window, delta: delta)
         let regions = Self.fenceRegions(fences: fences, totalLength: string.length)
 
-        var styleRange = string.paragraphRange(for: editedRange)
-        if fences.count != fenceCount {
-            // Fence opened/closed: restyle everything once.
-            fenceCount = fences.count
-            styleRange = NSRange(location: 0, length: string.length)
-        } else {
+        var styleRange: NSRange
+        if let window, previousFenceCount == fences.count {
+            styleRange = window
             // Edits inside a fence restyle the whole fenced region.
             for region in regions where NSIntersectionRange(region, styleRange).length > 0 {
                 styleRange = NSUnionRange(styleRange, region)
             }
+        } else {
+            // Fence opened/closed (or first pass): everything after the
+            // change can flip meaning, so restyle the document once.
+            styleRange = NSRange(location: 0, length: string.length)
         }
         guard styleRange.length > 0 else { return }
 
-        textStorage.setAttributes(EditorTheme.bodyAttributes(monospaced: false, size: fontSize), range: styleRange)
-        var location = styleRange.location
-        let end = NSMaxRange(styleRange)
-        while location < end {
-            let line = string.lineRange(for: NSRange(location: location, length: 0))
-            styleLine(line, string: string, fenceRegions: regions, in: textStorage)
-            guard NSMaxRange(line) > location else { break }
-            location = NSMaxRange(line)
-        }
+        // Outside of an edit cycle (initial full pass), batch the thousands
+        // of attribute changes into one layout invalidation. Inside
+        // didProcessEditing the range is small and nesting begin/endEditing
+        // there is not allowed.
+        let batch = editedRange == nil
+        if batch { textStorage.beginEditing() }
+        applyStyles(in: styleRange, string: string, regions: regions, to: textStorage)
+        if batch { textStorage.endEditing() }
     }
 
     // MARK: - Fences
 
-    /// Ranges of lines that start a ``` fence marker.
-    static func fenceLines(in string: NSString) -> [NSRange] {
+    /// Brings the fence-line cache up to date for the given edit.
+    ///
+    /// Cached lines strictly before the edited paragraphs keep their
+    /// positions, lines after shift by `delta`, and the edited paragraphs
+    /// themselves are rescanned locally.
+    private func updatedFenceLines(string: NSString, window: NSRange?, delta: Int) -> [NSRange] {
+        guard
+            let cache = fenceCache,
+            let window,
+            cachedLength + delta == string.length
+        else {
+            let scanned = Self.scanFenceLines(in: string, within: NSRange(location: 0, length: string.length))
+            fenceCache = scanned
+            cachedLength = string.length
+            return scanned
+        }
+
+        let preEditWindowEnd = NSMaxRange(window) - delta
+
+        var updated: [NSRange] = []
+        updated.reserveCapacity(cache.count + 2)
+        var insertIndex: Int?
+        for fence in cache {
+            if NSMaxRange(fence) <= window.location {
+                updated.append(fence)
+            } else if fence.location >= preEditWindowEnd {
+                if insertIndex == nil { insertIndex = updated.count }
+                updated.append(NSRange(location: fence.location + delta, length: fence.length))
+            }
+            // Fences inside the pre-edit window are dropped and rescanned.
+        }
+        updated.insert(
+            contentsOf: Self.scanFenceLines(in: string, within: window),
+            at: insertIndex ?? updated.count
+        )
+
+        fenceCache = updated
+        cachedLength = string.length
+        return updated
+    }
+
+    /// Ranges of lines within `range` that start with a ``` fence marker.
+    static func scanFenceLines(in string: NSString, within range: NSRange) -> [NSRange] {
         var lines: [NSRange] = []
-        var location = 0
-        while location < string.length {
+        var location = range.location
+        let end = NSMaxRange(range)
+        while location < end {
             let found = string.range(
                 of: "```",
-                range: NSRange(location: location, length: string.length - location)
+                range: NSRange(location: location, length: end - location)
             )
             guard found.location != NSNotFound else { break }
             let line = string.lineRange(for: found)
@@ -114,6 +173,29 @@ final class MarkdownStyler: NSObject, NSTextStorageDelegate {
         return regions
     }
 
+    // MARK: - Line walk
+
+    private func applyStyles(in range: NSRange, string: NSString, regions: [NSRange], to storage: NSTextStorage) {
+        storage.setAttributes(EditorTheme.bodyAttributes(monospaced: false, size: fontSize), range: range)
+
+        // Regions and lines are both sorted: walk them together instead of
+        // searching the region list for every line.
+        var regionIndex = 0
+        var location = range.location
+        let end = NSMaxRange(range)
+        while location < end {
+            let line = string.lineRange(for: NSRange(location: location, length: 0))
+            while regionIndex < regions.count, NSMaxRange(regions[regionIndex]) <= line.location {
+                regionIndex += 1
+            }
+            let insideFence = regionIndex < regions.count
+                && NSLocationInRange(line.location, regions[regionIndex])
+            styleLine(line, string: string, insideFence: insideFence, in: storage)
+            guard NSMaxRange(line) > location else { break }
+            location = NSMaxRange(line)
+        }
+    }
+
     // MARK: - Line rules
 
     private static let headingPattern = try! NSRegularExpression(pattern: "^(#{1,6})[ \\t]")
@@ -121,60 +203,83 @@ final class MarkdownStyler: NSObject, NSTextStorageDelegate {
     private static let quotePattern = try! NSRegularExpression(pattern: "^ {0,3}((?:>[ ]?)+)")
     private static let listPattern = try! NSRegularExpression(pattern: "^[ \\t]*([-*+]|\\d{1,9}[.)])[ \\t]+")
 
+    /// First UTF-16 units that can begin a line-level construct.
+    private static let lineTriggers: Set<unichar> = {
+        var set = Set("#>-*+_ \t".utf16)
+        set.formUnion("0123456789".utf16)
+        return set
+    }()
+
+    /// Characters that can begin an inline construct.
+    private static let inlineTriggers = CharacterSet(charactersIn: "*_~`[!")
+
     private func styleLine(
         _ line: NSRange,
         string: NSString,
-        fenceRegions: [NSRange],
+        insideFence: Bool,
         in storage: NSTextStorage
     ) {
         // Code block interior and fence marker lines.
-        if fenceRegions.contains(where: { NSLocationInRange(line.location, $0) }) {
+        if insideFence {
             storage.addAttributes([
                 .font: EditorTheme.codeFont(size: fontSize),
                 .backgroundColor: EditorTheme.codeBackgroundColor,
             ], range: line)
-            if string.substring(with: line).hasPrefix("```") {
+            if string.range(of: "```", options: .anchored, range: line).location != NSNotFound {
                 storage.addAttribute(.foregroundColor, value: EditorTheme.markerColor, range: line)
             }
             return
         }
 
-        let lineText = string.substring(with: line)
-        let fullLine = NSRange(location: 0, length: (lineText as NSString).length)
-        func absolute(_ range: NSRange) -> NSRange {
-            NSRange(location: line.location + range.location, length: range.length)
-        }
-
-        // Horizontal rule: the whole line is a marker.
-        if Self.hrPattern.firstMatch(in: lineText, range: fullLine) != nil {
-            storage.addAttribute(.foregroundColor, value: EditorTheme.markerColor, range: line)
-            return
-        }
-
-        // Heading: larger bold content, dim `#` marker. No inline rules inside.
-        if let match = Self.headingPattern.firstMatch(in: lineText, range: fullLine) {
-            let level = match.range(at: 1).length
-            storage.addAttribute(.font, value: EditorTheme.headingFont(level: level, size: fontSize), range: line)
-            storage.addAttribute(.foregroundColor, value: EditorTheme.markerColor, range: absolute(match.range(at: 1)))
-            return
-        }
-
         var contentStart = 0
 
-        // Blockquote: dim `>` marker, quiet content.
-        if let match = Self.quotePattern.firstMatch(in: lineText, range: fullLine) {
-            storage.addAttribute(.foregroundColor, value: EditorTheme.quoteColor, range: line)
-            storage.addAttribute(.foregroundColor, value: EditorTheme.markerColor, range: absolute(match.range(at: 1)))
-            contentStart = NSMaxRange(match.range)
-        }
-        // List: slightly emphasized bullet/number.
-        else if let match = Self.listPattern.firstMatch(in: lineText, range: fullLine) {
-            storage.addAttribute(.font, value: EditorTheme.listMarkerFont(size: fontSize), range: absolute(match.range(at: 1)))
-            contentStart = NSMaxRange(match.range)
+        if Self.lineTriggers.contains(string.character(at: line.location)) {
+            let lineText = string.substring(with: line)
+            let fullLine = NSRange(location: 0, length: (lineText as NSString).length)
+            func absolute(_ range: NSRange) -> NSRange {
+                NSRange(location: line.location + range.location, length: range.length)
+            }
+
+            // Horizontal rule: the whole line is a marker.
+            if Self.hrPattern.firstMatch(in: lineText, range: fullLine) != nil {
+                storage.addAttribute(.foregroundColor, value: EditorTheme.markerColor, range: line)
+                return
+            }
+
+            // Heading: larger bold content, dim `#` marker. No inline rules inside.
+            if let match = Self.headingPattern.firstMatch(in: lineText, range: fullLine) {
+                let level = match.range(at: 1).length
+                storage.addAttribute(.font, value: EditorTheme.headingFont(level: level, size: fontSize), range: line)
+                storage.addAttribute(.foregroundColor, value: EditorTheme.markerColor, range: absolute(match.range(at: 1)))
+                return
+            }
+
+            // Blockquote: dim `>` marker, quiet content.
+            if let match = Self.quotePattern.firstMatch(in: lineText, range: fullLine) {
+                storage.addAttribute(.foregroundColor, value: EditorTheme.quoteColor, range: line)
+                storage.addAttribute(.foregroundColor, value: EditorTheme.markerColor, range: absolute(match.range(at: 1)))
+                contentStart = NSMaxRange(match.range)
+            }
+            // List: slightly emphasized bullet/number.
+            else if let match = Self.listPattern.firstMatch(in: lineText, range: fullLine) {
+                storage.addAttribute(.font, value: EditorTheme.listMarkerFont(size: fontSize), range: absolute(match.range(at: 1)))
+                contentStart = NSMaxRange(match.range)
+            }
         }
 
-        let content = NSRange(location: contentStart, length: fullLine.length - contentStart)
-        styleInline(in: lineText, range: content, lineLocation: line.location, storage: storage)
+        // Inline rules only when the line can contain inline syntax at all.
+        let contentRange = NSRange(location: line.location + contentStart, length: line.length - contentStart)
+        guard contentRange.length > 0,
+              string.rangeOfCharacter(from: Self.inlineTriggers, options: [], range: contentRange).location != NSNotFound
+        else { return }
+
+        let lineText = string.substring(with: line)
+        styleInline(
+            in: lineText,
+            range: NSRange(location: contentStart, length: (lineText as NSString).length - contentStart),
+            lineLocation: line.location,
+            storage: storage
+        )
     }
 
     // MARK: - Inline rules

@@ -10,8 +10,10 @@ import AppKit
 ///
 /// Undo, Find, spell checking, IME, and drag & drop all come from the
 /// system text view — Tilde switches them on rather than building them.
+/// The view renders the document's own `NSTextStorage`, so typing never
+/// round-trips the buffer through SwiftUI.
 struct TextEditorView: NSViewRepresentable {
-    @ObservedObject var document: TextDocument
+    var document: TextDocument
 
     var fontSize: CGFloat
     var wordWrap: Bool
@@ -75,9 +77,7 @@ struct TextEditorView: NSViewRepresentable {
         scrollView.backgroundColor = .textBackgroundColor
         scrollView.documentView = textView
 
-        context.coordinator.apply(desiredSettings, to: textView, in: scrollView)
-        textView.string = document.text
-        context.coordinator.restyleAll(textView)
+        context.coordinator.attach(document, to: textView, in: scrollView, settings: desiredSettings)
         return scrollView
     }
 
@@ -87,16 +87,15 @@ struct TextEditorView: NSViewRepresentable {
 
         guard let textView = scrollView.documentView as? NSTextView else { return }
 
-        if context.coordinator.applied != desiredSettings {
-            context.coordinator.apply(desiredSettings, to: textView, in: scrollView)
-            context.coordinator.restyleAll(textView)
+        // A new document instance (e.g. Revert To) swaps the backing storage.
+        if context.coordinator.attachedDocument !== document {
+            context.coordinator.attach(document, to: textView, in: scrollView, settings: desiredSettings)
+            return
         }
 
-        // Push external changes (e.g. Revert To) into the view
-        // without clobbering in-flight local edits.
-        if !context.coordinator.isEditing, textView.string != document.text {
-            textView.string = document.text
-            context.coordinator.restyleAll(textView)
+        if context.coordinator.applied != desiredSettings {
+            context.coordinator.apply(desiredSettings, to: textView, in: scrollView)
+            context.coordinator.restyleAll()
         }
     }
 
@@ -113,33 +112,48 @@ struct TextEditorView: NSViewRepresentable {
         /// The document's undo manager (from the SwiftUI environment), so text
         /// edits drive the window's dirty state, autosave, and ⌘Z.
         var undoManager: UndoManager?
-        var isEditing = false
         /// Attribute-only Markdown styling; present while styling is active.
         var styler: MarkdownStyler?
         var applied: AppliedSettings?
+        private(set) weak var attachedDocument: TextDocument?
 
         init(parent: TextEditorView) {
             self.parent = parent
         }
 
+        // MARK: - Document attachment
+
+        /// Points the text view at the document's own storage, then styles
+        /// the whole buffer exactly once.
+        func attach(_ document: TextDocument, to textView: NSTextView, in scrollView: NSScrollView, settings: AppliedSettings) {
+            attachedDocument = document
+            textView.textContentStorage?.textStorage = document.textStorage
+            apply(settings, to: textView, in: scrollView)
+            restyleAll()
+        }
+
         // MARK: - Settings
 
         func apply(_ settings: AppliedSettings, to textView: NSTextView, in scrollView: NSScrollView) {
+            let textStorage = attachedDocument?.textStorage
             if settings.stylerActive {
                 let styler = self.styler ?? MarkdownStyler()
                 styler.fontSize = settings.fontSize
                 self.styler = styler
-                textView.textStorage?.delegate = styler
+                textStorage?.delegate = styler
             } else {
                 styler = nil
-                textView.textStorage?.delegate = nil
+                textStorage?.delegate = nil
             }
 
+            let monospaced = !(attachedDocument?.isMarkdown ?? false)
             textView.typingAttributes = EditorTheme.bodyAttributes(
-                monospaced: !parent.document.isMarkdown,
+                monospaced: monospaced,
                 size: settings.fontSize
             )
-            textView.defaultParagraphStyle = EditorTheme.paragraphStyle
+            textView.defaultParagraphStyle = EditorTheme.paragraphStyle(
+                for: EditorTheme.bodyFont(monospaced: monospaced, size: settings.fontSize)
+            )
 
             configureWordWrap(settings.wordWrap, textView: textView, scrollView: scrollView)
             configureLineNumbers(settings.showLineNumbers, textView: textView, scrollView: scrollView)
@@ -182,16 +196,19 @@ struct TextEditorView: NSViewRepresentable {
         // MARK: - Typography
 
         /// Restyles the whole buffer: Markdown via the styler, plain text flat.
-        func restyleAll(_ textView: NSTextView) {
-            guard let textStorage = textView.textStorage else { return }
+        func restyleAll() {
+            guard let document = attachedDocument else { return }
             if let styler {
-                styler.restyleAll(textStorage)
+                styler.restyleAll(document.textStorage)
             } else {
                 let attributes = EditorTheme.bodyAttributes(
-                    monospaced: !parent.document.isMarkdown,
+                    monospaced: !document.isMarkdown,
                     size: applied?.fontSize ?? parent.fontSize
                 )
-                textStorage.setAttributes(attributes, range: NSRange(location: 0, length: textStorage.length))
+                document.textStorage.setAttributes(
+                    attributes,
+                    range: NSRange(location: 0, length: document.textStorage.length)
+                )
             }
         }
 
@@ -199,7 +216,7 @@ struct TextEditorView: NSViewRepresentable {
         /// `EditorTheme.maxContentWidth`, centered; plain text uses the full width.
         func updateContentInsets(of textView: NSTextView) {
             var horizontal = EditorTheme.padding
-            if parent.document.isMarkdown, applied?.wordWrap ?? true {
+            if attachedDocument?.isMarkdown == true, applied?.wordWrap ?? true {
                 let excess = textView.frame.width - EditorTheme.maxContentWidth
                 horizontal = max(EditorTheme.padding, excess / 2)
             }
@@ -215,13 +232,6 @@ struct TextEditorView: NSViewRepresentable {
         }
 
         // MARK: - NSTextViewDelegate
-
-        func textDidChange(_ notification: Notification) {
-            guard let textView = notification.object as? NSTextView else { return }
-            isEditing = true
-            parent.document.text = textView.string
-            isEditing = false
-        }
 
         func undoManager(for view: NSTextView) -> UndoManager? {
             undoManager

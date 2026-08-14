@@ -8,7 +8,7 @@ import SwiftUI
 /// Layout shell around the text editor; reads user settings and passes
 /// them down as plain values.
 struct EditorView: View {
-    @ObservedObject var document: TextDocument
+    var document: TextDocument
 
     @AppStorage(AppSettings.fontSizeKey) private var fontSize = AppSettings.defaultFontSize
     @AppStorage(AppSettings.wordWrapKey) private var wordWrap = AppSettings.defaultWordWrap
