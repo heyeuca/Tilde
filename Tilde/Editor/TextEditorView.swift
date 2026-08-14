@@ -13,6 +13,28 @@ import AppKit
 struct TextEditorView: NSViewRepresentable {
     @ObservedObject var document: TextDocument
 
+    var fontSize: CGFloat
+    var wordWrap: Bool
+    var showLineNumbers: Bool
+    var markdownStyling: Bool
+
+    /// The settings state last pushed into AppKit, for cheap diffing.
+    struct AppliedSettings: Equatable {
+        var fontSize: CGFloat
+        var wordWrap: Bool
+        var showLineNumbers: Bool
+        var stylerActive: Bool
+    }
+
+    private var desiredSettings: AppliedSettings {
+        AppliedSettings(
+            fontSize: fontSize,
+            wordWrap: wordWrap,
+            showLineNumbers: showLineNumbers,
+            stylerActive: document.isMarkdown && markdownStyling
+        )
+    }
+
     func makeNSView(context: Context) -> NSScrollView {
         let textView = NSTextView(usingTextLayoutManager: true)
         textView.delegate = context.coordinator
@@ -32,21 +54,10 @@ struct TextEditorView: NSViewRepresentable {
         textView.backgroundColor = .textBackgroundColor
         textView.textContainerInset = NSSize(width: EditorTheme.padding, height: EditorTheme.padding)
 
-        // Layout: grow vertically, wrap to the view's width.
+        // Layout: grow vertically; wrap is configured from settings below.
         textView.isVerticallyResizable = true
-        textView.isHorizontallyResizable = false
-        textView.autoresizingMask = [.width]
-        textView.textContainer?.widthTracksTextView = true
-
-        if document.isMarkdown {
-            let styler = MarkdownStyler()
-            context.coordinator.styler = styler
-            textView.textStorage?.delegate = styler
-        }
-
-        context.coordinator.applyTypography(to: textView)
-        textView.string = document.text
-        context.coordinator.restyleAll(textView)
+        textView.minSize = .zero
+        textView.maxSize = NSSize(width: CGFloat.greatestFiniteMagnitude, height: CGFloat.greatestFiniteMagnitude)
 
         // Markdown caps its content width; recompute the insets as the
         // window resizes.
@@ -63,6 +74,10 @@ struct TextEditorView: NSViewRepresentable {
         scrollView.drawsBackground = true
         scrollView.backgroundColor = .textBackgroundColor
         scrollView.documentView = textView
+
+        context.coordinator.apply(desiredSettings, to: textView, in: scrollView)
+        textView.string = document.text
+        context.coordinator.restyleAll(textView)
         return scrollView
     }
 
@@ -71,6 +86,12 @@ struct TextEditorView: NSViewRepresentable {
         context.coordinator.undoManager = context.environment.undoManager
 
         guard let textView = scrollView.documentView as? NSTextView else { return }
+
+        if context.coordinator.applied != desiredSettings {
+            context.coordinator.apply(desiredSettings, to: textView, in: scrollView)
+            context.coordinator.restyleAll(textView)
+        }
+
         // Push external changes (e.g. Revert To) into the view
         // without clobbering in-flight local edits.
         if !context.coordinator.isEditing, textView.string != document.text {
@@ -93,21 +114,72 @@ struct TextEditorView: NSViewRepresentable {
         /// edits drive the window's dirty state, autosave, and ⌘Z.
         var undoManager: UndoManager?
         var isEditing = false
-        /// Attribute-only Markdown styling; present only for Markdown documents.
+        /// Attribute-only Markdown styling; present while styling is active.
         var styler: MarkdownStyler?
+        var applied: AppliedSettings?
 
         init(parent: TextEditorView) {
             self.parent = parent
         }
 
-        // MARK: - Typography
+        // MARK: - Settings
 
-        /// Sets up body typography for future typing.
-        func applyTypography(to textView: NSTextView) {
-            textView.typingAttributes = EditorTheme.bodyAttributes(monospaced: !parent.document.isMarkdown)
+        func apply(_ settings: AppliedSettings, to textView: NSTextView, in scrollView: NSScrollView) {
+            if settings.stylerActive {
+                let styler = self.styler ?? MarkdownStyler()
+                styler.fontSize = settings.fontSize
+                self.styler = styler
+                textView.textStorage?.delegate = styler
+            } else {
+                styler = nil
+                textView.textStorage?.delegate = nil
+            }
+
+            textView.typingAttributes = EditorTheme.bodyAttributes(
+                monospaced: !parent.document.isMarkdown,
+                size: settings.fontSize
+            )
             textView.defaultParagraphStyle = EditorTheme.paragraphStyle
+
+            configureWordWrap(settings.wordWrap, textView: textView, scrollView: scrollView)
+            configureLineNumbers(settings.showLineNumbers, textView: textView, scrollView: scrollView)
+            applied = settings
             updateContentInsets(of: textView)
         }
+
+        private func configureWordWrap(_ wrap: Bool, textView: NSTextView, scrollView: NSScrollView) {
+            guard let container = textView.textContainer else { return }
+            if wrap {
+                textView.isHorizontallyResizable = false
+                textView.autoresizingMask = [.width]
+                container.widthTracksTextView = true
+                textView.setFrameSize(NSSize(
+                    width: scrollView.contentSize.width,
+                    height: textView.frame.height
+                ))
+                scrollView.hasHorizontalScroller = false
+            } else {
+                textView.isHorizontallyResizable = true
+                textView.autoresizingMask = []
+                container.widthTracksTextView = false
+                container.size = NSSize(width: CGFloat.greatestFiniteMagnitude, height: CGFloat.greatestFiniteMagnitude)
+                scrollView.hasHorizontalScroller = true
+            }
+        }
+
+        private func configureLineNumbers(_ show: Bool, textView: NSTextView, scrollView: NSScrollView) {
+            if show {
+                if scrollView.verticalRulerView == nil {
+                    scrollView.verticalRulerView = LineNumberRulerView(textView: textView, scrollView: scrollView)
+                }
+                scrollView.hasVerticalRuler = true
+                scrollView.rulersVisible = true
+            } else {
+                scrollView.rulersVisible = false
+            }
+        }
+
+        // MARK: - Typography
 
         /// Restyles the whole buffer: Markdown via the styler, plain text flat.
         func restyleAll(_ textView: NSTextView) {
@@ -115,7 +187,10 @@ struct TextEditorView: NSViewRepresentable {
             if let styler {
                 styler.restyleAll(textStorage)
             } else {
-                let attributes = EditorTheme.bodyAttributes(monospaced: !parent.document.isMarkdown)
+                let attributes = EditorTheme.bodyAttributes(
+                    monospaced: !parent.document.isMarkdown,
+                    size: applied?.fontSize ?? parent.fontSize
+                )
                 textStorage.setAttributes(attributes, range: NSRange(location: 0, length: textStorage.length))
             }
         }
@@ -124,7 +199,7 @@ struct TextEditorView: NSViewRepresentable {
         /// `EditorTheme.maxContentWidth`, centered; plain text uses the full width.
         func updateContentInsets(of textView: NSTextView) {
             var horizontal = EditorTheme.padding
-            if parent.document.isMarkdown {
+            if parent.document.isMarkdown, applied?.wordWrap ?? true {
                 let excess = textView.frame.width - EditorTheme.maxContentWidth
                 horizontal = max(EditorTheme.padding, excess / 2)
             }

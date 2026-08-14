@@ -17,6 +17,9 @@ import AppKit
 /// is restyled once.
 final class MarkdownStyler: NSObject, NSTextStorageDelegate {
 
+    /// Current body font size; heading/code sizes derive from it.
+    var fontSize: CGFloat = EditorTheme.defaultFontSize
+
     /// Signature of the last-seen fence structure. When it changes, a fence
     /// was opened or closed and everything after it may flip meaning.
     private var fenceCount = -1
@@ -61,7 +64,7 @@ final class MarkdownStyler: NSObject, NSTextStorageDelegate {
         }
         guard styleRange.length > 0 else { return }
 
-        textStorage.setAttributes(EditorTheme.bodyAttributes(monospaced: false), range: styleRange)
+        textStorage.setAttributes(EditorTheme.bodyAttributes(monospaced: false, size: fontSize), range: styleRange)
         var location = styleRange.location
         let end = NSMaxRange(styleRange)
         while location < end {
@@ -127,7 +130,7 @@ final class MarkdownStyler: NSObject, NSTextStorageDelegate {
         // Code block interior and fence marker lines.
         if fenceRegions.contains(where: { NSLocationInRange(line.location, $0) }) {
             storage.addAttributes([
-                .font: EditorTheme.codeFont,
+                .font: EditorTheme.codeFont(size: fontSize),
                 .backgroundColor: EditorTheme.codeBackgroundColor,
             ], range: line)
             if string.substring(with: line).hasPrefix("```") {
@@ -151,7 +154,7 @@ final class MarkdownStyler: NSObject, NSTextStorageDelegate {
         // Heading: larger bold content, dim `#` marker. No inline rules inside.
         if let match = Self.headingPattern.firstMatch(in: lineText, range: fullLine) {
             let level = match.range(at: 1).length
-            storage.addAttribute(.font, value: EditorTheme.headingFont(level: level), range: line)
+            storage.addAttribute(.font, value: EditorTheme.headingFont(level: level, size: fontSize), range: line)
             storage.addAttribute(.foregroundColor, value: EditorTheme.markerColor, range: absolute(match.range(at: 1)))
             return
         }
@@ -166,7 +169,7 @@ final class MarkdownStyler: NSObject, NSTextStorageDelegate {
         }
         // List: slightly emphasized bullet/number.
         else if let match = Self.listPattern.firstMatch(in: lineText, range: fullLine) {
-            storage.addAttribute(.font, value: EditorTheme.listMarkerFont, range: absolute(match.range(at: 1)))
+            storage.addAttribute(.font, value: EditorTheme.listMarkerFont(size: fontSize), range: absolute(match.range(at: 1)))
             contentStart = NSMaxRange(match.range)
         }
 
@@ -213,7 +216,7 @@ final class MarkdownStyler: NSObject, NSTextStorageDelegate {
             guard let match, isFree(match.range) else { return }
             let content = match.range(at: 1)
             storage.addAttributes([
-                .font: EditorTheme.codeFont,
+                .font: EditorTheme.codeFont(size: fontSize),
                 .backgroundColor: EditorTheme.codeBackgroundColor,
             ], range: absolute(content))
             dimMarkers(of: match, except: content)
@@ -231,7 +234,7 @@ final class MarkdownStyler: NSObject, NSTextStorageDelegate {
         Self.boldPattern.enumerateMatches(in: lineText, range: range) { match, _, _ in
             guard let match, isFree(match.range) else { return }
             let content = match.range(at: 2)
-            storage.addAttribute(.font, value: EditorTheme.boldBodyFont, range: absolute(content))
+            storage.addAttribute(.font, value: EditorTheme.boldBodyFont(size: fontSize), range: absolute(content))
             dimMarkers(of: match, except: content)
             consumed.append(match.range)
         }
@@ -247,7 +250,7 @@ final class MarkdownStyler: NSObject, NSTextStorageDelegate {
         Self.italicPattern.enumerateMatches(in: lineText, range: range) { match, _, _ in
             guard let match, isFree(match.range) else { return }
             let content = match.range(at: 1).location != NSNotFound ? match.range(at: 1) : match.range(at: 2)
-            storage.addAttribute(.font, value: EditorTheme.italicBodyFont, range: absolute(content))
+            storage.addAttribute(.font, value: EditorTheme.italicBodyFont(size: fontSize), range: absolute(content))
             dimMarkers(of: match, except: content)
             consumed.append(match.range)
         }

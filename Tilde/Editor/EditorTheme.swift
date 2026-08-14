@@ -8,9 +8,10 @@ import AppKit
 /// Typography and layout tokens for the editor.
 ///
 /// Colors are always macOS semantic colors; Tilde has no theme system.
+/// Font-producing functions take the user's body size (⌘+/⌘-) as `size`.
 enum EditorTheme {
-    /// Body font size in points. User-adjustable in a later milestone (⌘+/⌘-).
-    static let fontSize: CGFloat = 14
+    /// Default body font size in points.
+    static let defaultFontSize: CGFloat = 14
 
     /// Generous line height is the core of Tilde's readability.
     static let lineHeightMultiple: CGFloat = 1.5
@@ -24,10 +25,10 @@ enum EditorTheme {
 
     /// Body font: proportional (SF Pro) for Markdown, monospaced (SF Mono)
     /// for plain text.
-    static func bodyFont(monospaced: Bool) -> NSFont {
+    static func bodyFont(monospaced: Bool, size: CGFloat) -> NSFont {
         monospaced
-            ? .monospacedSystemFont(ofSize: fontSize, weight: .regular)
-            : .systemFont(ofSize: fontSize)
+            ? .monospacedSystemFont(ofSize: size, weight: .regular)
+            : .systemFont(ofSize: size)
     }
 
     static var paragraphStyle: NSParagraphStyle {
@@ -37,9 +38,9 @@ enum EditorTheme {
     }
 
     /// The uniform attributes for body text.
-    static func bodyAttributes(monospaced: Bool) -> [NSAttributedString.Key: Any] {
+    static func bodyAttributes(monospaced: Bool, size: CGFloat) -> [NSAttributedString.Key: Any] {
         [
-            .font: bodyFont(monospaced: monospaced),
+            .font: bodyFont(monospaced: monospaced, size: size),
             .paragraphStyle: paragraphStyle,
             .foregroundColor: NSColor.textColor,
         ]
@@ -59,28 +60,36 @@ enum EditorTheme {
 
     /// Code spans/blocks sit a point smaller so the monospaced face
     /// doesn't look oversized next to SF Pro.
-    static var codeFont: NSFont {
-        .monospacedSystemFont(ofSize: fontSize - 1, weight: .regular)
+    static func codeFont(size: CGFloat) -> NSFont {
+        .monospacedSystemFont(ofSize: size - 1, weight: .regular)
     }
 
-    static func headingFont(level: Int) -> NSFont {
+    static func headingFont(level: Int, size: CGFloat) -> NSFont {
         switch level {
-        case 1: .systemFont(ofSize: (fontSize * 1.6).rounded(), weight: .bold)
-        case 2: .systemFont(ofSize: (fontSize * 1.45).rounded(), weight: .bold)
-        case 3: .systemFont(ofSize: (fontSize * 1.25).rounded(), weight: .bold)
-        default: .systemFont(ofSize: (fontSize * 1.05).rounded(), weight: .semibold)
+        case 1: .systemFont(ofSize: (size * 1.6).rounded(), weight: .bold)
+        case 2: .systemFont(ofSize: (size * 1.45).rounded(), weight: .bold)
+        case 3: .systemFont(ofSize: (size * 1.25).rounded(), weight: .bold)
+        default: .systemFont(ofSize: (size * 1.05).rounded(), weight: .semibold)
         }
     }
 
-    static var boldBodyFont: NSFont {
-        .systemFont(ofSize: fontSize, weight: .bold)
+    static func boldBodyFont(size: CGFloat) -> NSFont {
+        .systemFont(ofSize: size, weight: .bold)
     }
 
-    static var italicBodyFont: NSFont {
-        NSFontManager.shared.convert(bodyFont(monospaced: false), toHaveTrait: .italicFontMask)
+    static func italicBodyFont(size: CGFloat) -> NSFont {
+        NSFontManager.shared.convert(bodyFont(monospaced: false, size: size), toHaveTrait: .italicFontMask)
     }
 
-    static var listMarkerFont: NSFont {
-        .systemFont(ofSize: fontSize, weight: .semibold)
+    static func listMarkerFont(size: CGFloat) -> NSFont {
+        .systemFont(ofSize: size, weight: .semibold)
     }
+
+    // MARK: - Line number gutter
+
+    static var gutterFont: NSFont {
+        .monospacedDigitSystemFont(ofSize: 10, weight: .regular)
+    }
+
+    static var gutterColor: NSColor { .tertiaryLabelColor }
 }
