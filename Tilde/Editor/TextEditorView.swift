@@ -135,16 +135,15 @@ struct TextEditorView: NSViewRepresentable {
         // MARK: - Settings
 
         func apply(_ settings: AppliedSettings, to textView: NSTextView, in scrollView: NSScrollView) {
-            let textStorage = attachedDocument?.textStorage
-            if settings.stylerActive {
-                let styler = self.styler ?? MarkdownStyler()
-                styler.fontSize = settings.fontSize
-                self.styler = styler
-                textStorage?.delegate = styler
-            } else {
-                styler = nil
-                textStorage?.delegate = nil
-            }
+            // The styler is always attached: even plain documents need live
+            // body-attribute and empty-line-spacing maintenance. Markdown
+            // rules run only when stylerActive.
+            let styler = self.styler ?? MarkdownStyler()
+            styler.fontSize = settings.fontSize
+            styler.stylesMarkdown = settings.stylerActive
+            styler.usesMonospacedBody = !(attachedDocument?.isMarkdown ?? false)
+            self.styler = styler
+            attachedDocument?.textStorage.delegate = styler
 
             let monospaced = !(attachedDocument?.isMarkdown ?? false)
             textView.typingAttributes = EditorTheme.bodyAttributes(
@@ -195,21 +194,11 @@ struct TextEditorView: NSViewRepresentable {
 
         // MARK: - Typography
 
-        /// Restyles the whole buffer: Markdown via the styler, plain text flat.
+        /// Restyles the whole buffer through the styler (which handles both
+        /// Markdown and plain body maintenance).
         func restyleAll() {
             guard let document = attachedDocument else { return }
-            if let styler {
-                styler.restyleAll(document.textStorage)
-            } else {
-                let attributes = EditorTheme.bodyAttributes(
-                    monospaced: !document.isMarkdown,
-                    size: applied?.fontSize ?? parent.fontSize
-                )
-                document.textStorage.setAttributes(
-                    attributes,
-                    range: NSRange(location: 0, length: document.textStorage.length)
-                )
-            }
+            styler?.restyleAll(document.textStorage)
         }
 
         /// Markdown documents keep their content no wider than

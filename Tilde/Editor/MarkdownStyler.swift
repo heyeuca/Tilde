@@ -21,6 +21,13 @@ final class MarkdownStyler: NSObject, NSTextStorageDelegate {
     /// Current body font size; heading/code sizes derive from it.
     var fontSize: CGFloat = EditorTheme.defaultFontSize
 
+    /// When false the styler only maintains body attributes and empty-line
+    /// spacing (plain-text documents); Markdown rules are skipped.
+    var stylesMarkdown = true
+
+    /// Plain-text documents use SF Mono for body text.
+    var usesMonospacedBody = false
+
     /// Sorted ranges of ``` fence-marker lines, kept in sync across edits.
     private var fenceCache: [NSRange]?
     private var cachedLength = 0
@@ -65,11 +72,11 @@ final class MarkdownStyler: NSObject, NSTextStorageDelegate {
         }
 
         let previousFenceCount = fenceCache?.count
-        let fences = updatedFenceLines(string: string, window: window, delta: delta)
+        let fences = stylesMarkdown ? updatedFenceLines(string: string, window: window, delta: delta) : []
         let regions = Self.fenceRegions(fences: fences, totalLength: string.length)
 
         var styleRange: NSRange
-        if let window, previousFenceCount == fences.count {
+        if let window, !stylesMarkdown || previousFenceCount == fences.count {
             styleRange = window
             // Edits inside a fence restyle the whole fenced region.
             for region in regions where NSIntersectionRange(region, styleRange).length > 0 {
@@ -176,7 +183,7 @@ final class MarkdownStyler: NSObject, NSTextStorageDelegate {
     // MARK: - Line walk
 
     private func applyStyles(in range: NSRange, string: NSString, regions: [NSRange], to storage: NSTextStorage) {
-        storage.setAttributes(EditorTheme.bodyAttributes(monospaced: false, size: fontSize), range: range)
+        storage.setAttributes(EditorTheme.bodyAttributes(monospaced: usesMonospacedBody, size: fontSize), range: range)
 
         // Regions and lines are both sorted: walk them together instead of
         // searching the region list for every line.
@@ -219,12 +226,29 @@ final class MarkdownStyler: NSObject, NSTextStorageDelegate {
         insideFence: Bool,
         in storage: NSTextStorage
     ) {
+        // Fonts must not spill onto the trailing newline: the caret on the
+        // FOLLOWING (empty) line takes its height from the previous
+        // character, so a styled newline makes that caret heading-sized.
+        var textOnly = line
+        if line.length > 0, string.character(at: NSMaxRange(line) - 1) == 0x0A {
+            textOnly.length -= 1
+        }
+
+        // Empty lines drop the lineSpacing: the insertion caret on an empty
+        // line spans the whole line box including the spacing, which reads
+        // as an oversized caret. The blank line itself already provides the
+        // paragraph gap.
+        if textOnly.length == 0, !insideFence {
+            storage.addAttribute(.paragraphStyle, value: NSParagraphStyle.default, range: line)
+            return
+        }
+
+        guard stylesMarkdown else { return }
+
         // Code block interior and fence marker lines.
         if insideFence {
-            storage.addAttributes([
-                .font: EditorTheme.codeFont(size: fontSize),
-                .backgroundColor: EditorTheme.codeBackgroundColor,
-            ], range: line)
+            storage.addAttribute(.font, value: EditorTheme.codeFont(size: fontSize), range: textOnly)
+            storage.addAttribute(.backgroundColor, value: EditorTheme.codeBackgroundColor, range: line)
             if string.range(of: "```", options: .anchored, range: line).location != NSNotFound {
                 storage.addAttribute(.foregroundColor, value: EditorTheme.markerColor, range: line)
             }
@@ -249,7 +273,7 @@ final class MarkdownStyler: NSObject, NSTextStorageDelegate {
             // Heading: larger bold content, dim `#` marker. No inline rules inside.
             if let match = Self.headingPattern.firstMatch(in: lineText, range: fullLine) {
                 let level = match.range(at: 1).length
-                storage.addAttribute(.font, value: EditorTheme.headingFont(level: level, size: fontSize), range: line)
+                storage.addAttribute(.font, value: EditorTheme.headingFont(level: level, size: fontSize), range: textOnly)
                 storage.addAttribute(.foregroundColor, value: EditorTheme.markerColor, range: absolute(match.range(at: 1)))
                 return
             }
