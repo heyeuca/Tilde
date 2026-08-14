@@ -38,8 +38,15 @@ struct TextEditorView: NSViewRepresentable {
         textView.autoresizingMask = [.width]
         textView.textContainer?.widthTracksTextView = true
 
-        textView.string = document.text
+        if document.isMarkdown {
+            let styler = MarkdownStyler()
+            context.coordinator.styler = styler
+            textView.textStorage?.delegate = styler
+        }
+
         context.coordinator.applyTypography(to: textView)
+        textView.string = document.text
+        context.coordinator.restyleAll(textView)
 
         // Markdown caps its content width; recompute the insets as the
         // window resizes.
@@ -68,7 +75,7 @@ struct TextEditorView: NSViewRepresentable {
         // without clobbering in-flight local edits.
         if !context.coordinator.isEditing, textView.string != document.text {
             textView.string = document.text
-            context.coordinator.applyTypography(to: textView)
+            context.coordinator.restyleAll(textView)
         }
     }
 
@@ -86,6 +93,8 @@ struct TextEditorView: NSViewRepresentable {
         /// edits drive the window's dirty state, autosave, and ⌘Z.
         var undoManager: UndoManager?
         var isEditing = false
+        /// Attribute-only Markdown styling; present only for Markdown documents.
+        var styler: MarkdownStyler?
 
         init(parent: TextEditorView) {
             self.parent = parent
@@ -93,15 +102,22 @@ struct TextEditorView: NSViewRepresentable {
 
         // MARK: - Typography
 
-        /// Applies body typography to the whole buffer and to future typing.
+        /// Sets up body typography for future typing.
         func applyTypography(to textView: NSTextView) {
-            let attributes = EditorTheme.bodyAttributes(monospaced: !parent.document.isMarkdown)
-            textView.typingAttributes = attributes
+            textView.typingAttributes = EditorTheme.bodyAttributes(monospaced: !parent.document.isMarkdown)
             textView.defaultParagraphStyle = EditorTheme.paragraphStyle
-            if let textStorage = textView.textStorage {
+            updateContentInsets(of: textView)
+        }
+
+        /// Restyles the whole buffer: Markdown via the styler, plain text flat.
+        func restyleAll(_ textView: NSTextView) {
+            guard let textStorage = textView.textStorage else { return }
+            if let styler {
+                styler.restyleAll(textStorage)
+            } else {
+                let attributes = EditorTheme.bodyAttributes(monospaced: !parent.document.isMarkdown)
                 textStorage.setAttributes(attributes, range: NSRange(location: 0, length: textStorage.length))
             }
-            updateContentInsets(of: textView)
         }
 
         /// Markdown documents keep their content no wider than
