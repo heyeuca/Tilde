@@ -23,12 +23,17 @@ final class TextDocument: ReferenceFileDocument {
     private(set) var encoding: FileEncoding
     private(set) var lineEnding: LineEnding
 
+    /// Whether this document gets Markdown typography and styling.
+    /// New documents are plain text until saved with a Markdown extension.
+    private(set) var isMarkdown: Bool
+
     static var readableContentTypes: [UTType] { [.markdown, .plainText] }
 
     init() {
         text = ""
         encoding = .default
         lineEnding = .lf
+        isMarkdown = false
     }
 
     init(configuration: ReadConfiguration) throws {
@@ -40,6 +45,7 @@ final class TextDocument: ReferenceFileDocument {
         text = normalized.text
         encoding = decoded.encoding
         lineEnding = normalized.lineEnding
+        isMarkdown = configuration.contentType.conforms(to: .markdown)
     }
 
     func snapshot(contentType: UTType) throws -> String {

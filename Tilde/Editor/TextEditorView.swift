@@ -29,10 +29,8 @@ struct TextEditorView: NSViewRepresentable {
         textView.isAutomaticSpellingCorrectionEnabled = false
 
         // Appearance
-        textView.font = .monospacedSystemFont(ofSize: 14, weight: .regular)
-        textView.textColor = .textColor
         textView.backgroundColor = .textBackgroundColor
-        textView.textContainerInset = NSSize(width: 24, height: 24)
+        textView.textContainerInset = NSSize(width: EditorTheme.padding, height: EditorTheme.padding)
 
         // Layout: grow vertically, wrap to the view's width.
         textView.isVerticallyResizable = true
@@ -41,6 +39,17 @@ struct TextEditorView: NSViewRepresentable {
         textView.textContainer?.widthTracksTextView = true
 
         textView.string = document.text
+        context.coordinator.applyTypography(to: textView)
+
+        // Markdown caps its content width; recompute the insets as the
+        // window resizes.
+        textView.postsFrameChangedNotifications = true
+        NotificationCenter.default.addObserver(
+            context.coordinator,
+            selector: #selector(Coordinator.viewFrameDidChange(_:)),
+            name: NSView.frameDidChangeNotification,
+            object: textView
+        )
 
         let scrollView = NSScrollView()
         scrollView.hasVerticalScroller = true
@@ -59,7 +68,12 @@ struct TextEditorView: NSViewRepresentable {
         // without clobbering in-flight local edits.
         if !context.coordinator.isEditing, textView.string != document.text {
             textView.string = document.text
+            context.coordinator.applyTypography(to: textView)
         }
+    }
+
+    static func dismantleNSView(_ scrollView: NSScrollView, coordinator: Coordinator) {
+        NotificationCenter.default.removeObserver(coordinator)
     }
 
     func makeCoordinator() -> Coordinator {
@@ -76,6 +90,40 @@ struct TextEditorView: NSViewRepresentable {
         init(parent: TextEditorView) {
             self.parent = parent
         }
+
+        // MARK: - Typography
+
+        /// Applies body typography to the whole buffer and to future typing.
+        func applyTypography(to textView: NSTextView) {
+            let attributes = EditorTheme.bodyAttributes(monospaced: !parent.document.isMarkdown)
+            textView.typingAttributes = attributes
+            textView.defaultParagraphStyle = EditorTheme.paragraphStyle
+            if let textStorage = textView.textStorage {
+                textStorage.setAttributes(attributes, range: NSRange(location: 0, length: textStorage.length))
+            }
+            updateContentInsets(of: textView)
+        }
+
+        /// Markdown documents keep their content no wider than
+        /// `EditorTheme.maxContentWidth`, centered; plain text uses the full width.
+        func updateContentInsets(of textView: NSTextView) {
+            var horizontal = EditorTheme.padding
+            if parent.document.isMarkdown {
+                let excess = textView.frame.width - EditorTheme.maxContentWidth
+                horizontal = max(EditorTheme.padding, excess / 2)
+            }
+            let inset = NSSize(width: horizontal, height: EditorTheme.padding)
+            if textView.textContainerInset != inset {
+                textView.textContainerInset = inset
+            }
+        }
+
+        @objc func viewFrameDidChange(_ notification: Notification) {
+            guard let textView = notification.object as? NSTextView else { return }
+            updateContentInsets(of: textView)
+        }
+
+        // MARK: - NSTextViewDelegate
 
         func textDidChange(_ notification: Notification) {
             guard let textView = notification.object as? NSTextView else { return }
