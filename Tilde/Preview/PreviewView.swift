@@ -25,8 +25,11 @@ struct PreviewView: NSViewRepresentable {
         let textStorage = NSTextStorage()
         let layoutManager = NSLayoutManager()
         textStorage.addLayoutManager(layoutManager)
-        let container = NSTextContainer()
+        // Width tracks the view; height is unbounded so the text view grows to
+        // fit all content and the scroll view can reach the bottom.
+        let container = NSTextContainer(size: NSSize(width: 0, height: CGFloat.greatestFiniteMagnitude))
         container.widthTracksTextView = true
+        container.heightTracksTextView = false
         layoutManager.addTextContainer(container)
 
         let textView = ExitingTextView(frame: .zero, textContainer: container)
@@ -40,7 +43,8 @@ struct PreviewView: NSViewRepresentable {
         textView.isVerticallyResizable = true
         textView.isHorizontallyResizable = false
         textView.autoresizingMask = [.width]
-        textView.textContainer?.widthTracksTextView = true
+        textView.minSize = .zero
+        textView.maxSize = NSSize(width: CGFloat.greatestFiniteMagnitude, height: CGFloat.greatestFiniteMagnitude)
         // Links open in the user's browser; nothing is editable.
         textView.isAutomaticLinkDetectionEnabled = false
 
