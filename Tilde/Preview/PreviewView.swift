@@ -77,6 +77,13 @@ struct PreviewView: NSViewRepresentable {
         weak var textView: NSTextView?
         private var renderedText: String?
         private var renderedSize: CGFloat?
+        /// Bumped per render so a slow background render can tell if it has
+        /// been superseded before it installs its result.
+        private var generation = 0
+
+        /// Documents at or below this size render synchronously (no flash);
+        /// larger ones render off the main thread so ⌘⇧P never freezes.
+        private static let syncThreshold = 256 * 1024
 
         func renderIfNeeded(document: TextDocument, fontSize: CGFloat) {
             if document.textStorage.string == renderedText, fontSize == renderedSize { return }
@@ -85,12 +92,28 @@ struct PreviewView: NSViewRepresentable {
 
         func render(document: TextDocument, fontSize: CGFloat) {
             guard let textView else { return }
+            let text = document.textStorage.string
             let baseURL = textView.window?.representedURL?.deletingLastPathComponent()
-            let renderer = MarkdownRenderer(fontSize: fontSize, baseURL: baseURL)
-            let rendered = renderer.render(document.textStorage.string)
-            textView.textStorage?.setAttributedString(rendered)
-            renderedText = document.textStorage.string
+            renderedText = text
             renderedSize = fontSize
+            generation += 1
+            let token = generation
+            let renderer = MarkdownRenderer(fontSize: fontSize, baseURL: baseURL)
+
+            if text.utf8.count <= Self.syncThreshold {
+                textView.textStorage?.setAttributedString(renderer.render(text))
+                return
+            }
+
+            // Apple's Markdown parser dominates the cost on multi-hundred-KB
+            // documents and cannot be sped up, so render off the main thread.
+            DispatchQueue.global(qos: .userInitiated).async {
+                let rendered = renderer.render(text)
+                DispatchQueue.main.async { [weak self] in
+                    guard let self, self.generation == token, let textView = self.textView else { return }
+                    textView.textStorage?.setAttributedString(rendered)
+                }
+            }
         }
 
         /// Markdown content is capped and centered like the editor.
