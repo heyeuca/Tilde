@@ -18,7 +18,18 @@ struct PreviewView: NSViewRepresentable {
     var onExit: () -> Void
 
     func makeNSView(context: Context) -> NSScrollView {
-        let textView = ExitingTextView()
+        // Build the TextKit 1 stack explicitly: NSTextTable (used for
+        // Markdown tables) is not supported by TextKit 2. The preview is
+        // read-only and re-rendered per toggle, so TextKit 1 here is fine;
+        // the editor stays on TextKit 2.
+        let textStorage = NSTextStorage()
+        let layoutManager = NSLayoutManager()
+        textStorage.addLayoutManager(layoutManager)
+        let container = NSTextContainer()
+        container.widthTracksTextView = true
+        layoutManager.addTextContainer(container)
+
+        let textView = ExitingTextView(frame: .zero, textContainer: container)
         textView.onExit = onExit
         textView.isEditable = false
         textView.isSelectable = true

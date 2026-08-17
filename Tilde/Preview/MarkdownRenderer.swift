@@ -68,15 +68,103 @@ struct MarkdownRenderer {
         }
 
         let result = NSMutableAttributedString()
-        for (index, block) in blocks.enumerated() {
-            append(block, to: result, isFirst: index == 0)
+        var index = 0
+        var afterTable = false
+        while index < blocks.count {
+            let block = blocks[index]
+            if let tableID = tableIdentity(of: block.intent) {
+                // Consume every block belonging to this table.
+                var tableBlocks: [Block] = []
+                while index < blocks.count, tableIdentity(of: blocks[index].intent) == tableID {
+                    tableBlocks.append(blocks[index])
+                    index += 1
+                }
+                appendTable(tableBlocks, to: result, isFirst: result.length == 0)
+                afterTable = true
+                continue
+            }
+            // A text block's paragraphSpacing is swallowed by the table
+            // layout, so the gap below a table is added as leading space on
+            // the block that follows it.
+            append(block, to: result, isFirst: index == 0, extraSpacingBefore: afterTable)
+            afterTable = false
+            index += 1
         }
         return result
     }
 
+    // MARK: - Tables
+
+    private func tableIdentity(of intent: PresentationIntent?) -> Int? {
+        intent?.components.first(where: { if case .table = $0.kind { return true }; return false })?.identity
+    }
+
+    private func appendTable(_ blocks: [Block], to result: NSMutableAttributedString, isFirst: Bool) {
+        // Column geometry from the shared table intent.
+        var columns: [PresentationIntent.TableColumn] = []
+        for component in blocks.first?.intent?.components ?? [] {
+            if case .table(let cols) = component.kind { columns = cols }
+        }
+        let columnCount = max(columns.count, 1)
+
+        let table = NSTextTable()
+        table.numberOfColumns = columnCount
+
+        let blockStart = result.length
+        for cell in blocks {
+            var column = 0
+            var row = 0
+            var isHeader = false
+            for component in cell.intent?.components ?? [] {
+                switch component.kind {
+                case .tableCell(let c): column = c
+                case .tableHeaderRow: isHeader = true; row = 0
+                case .tableRow(let ordinal): row = ordinal
+                default: break
+                }
+            }
+
+            let tableBlock = NSTextTableBlock(
+                table: table, startingRow: row, rowSpan: 1,
+                startingColumn: column, columnSpan: 1
+            )
+            tableBlock.setBorderColor(.separatorColor)
+            tableBlock.setWidth(1, type: .absoluteValueType, for: .border)
+            tableBlock.setWidth(6, type: .absoluteValueType, for: .padding)
+
+            let style = NSMutableParagraphStyle()
+            style.textBlocks = [tableBlock]
+            style.alignment = alignment(for: column, in: columns)
+
+            let baseFont = isHeader
+                ? EditorTheme.boldBodyFont(size: fontSize)
+                : EditorTheme.bodyFont(monospaced: false, size: fontSize)
+
+            let cellStart = result.length
+            for run in cell.runs {
+                result.append(inlineAttributed(run, baseFont: baseFont, quoted: false))
+            }
+            result.append(NSAttributedString(string: "\n"))
+            result.addAttribute(.paragraphStyle,
+                                value: style,
+                                range: NSRange(location: cellStart, length: result.length - cellStart))
+        }
+        _ = (blockStart, isFirst)
+    }
+
+    private func alignment(for column: Int, in columns: [PresentationIntent.TableColumn]) -> NSTextAlignment {
+        guard column < columns.count else { return .left }
+        switch columns[column].alignment {
+        case .left: return .left
+        case .center: return .center
+        case .right: return .right
+        @unknown default: return .left
+        }
+    }
+
     // MARK: - Block rendering
 
-    private func append(_ block: Block, to result: NSMutableAttributedString, isFirst: Bool) {
+    private func append(_ block: Block, to result: NSMutableAttributedString, isFirst: Bool, extraSpacingBefore: Bool = false) {
         let components = block.intent?.components ?? []
         let leafKind = components.first?.kind
 
@@ -148,9 +236,11 @@ struct MarkdownRenderer {
         style.lineSpacing = EditorTheme.lineSpacing(for: baseFont)
         style.paragraphSpacing = EditorTheme.lineSpacing(for: baseFont)
         if !isFirst {
-            style.paragraphSpacingBefore = headerLevel > 0
-                ? EditorTheme.lineSpacing(for: baseFont) * 1.5
-                : 0
+            if headerLevel > 0 {
+                style.paragraphSpacingBefore = EditorTheme.lineSpacing(for: baseFont) * 1.5
+            } else if extraSpacingBefore {
+                style.paragraphSpacingBefore = EditorTheme.lineSpacing(for: baseFont)
+            }
         }
 
         let listIndent = CGFloat(listDepth) * indentUnit
