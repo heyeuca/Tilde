@@ -33,8 +33,21 @@ struct ViewCommands: Commands {
     @AppStorage(AppSettings.wordWrapKey) private var wordWrap = AppSettings.defaultWordWrap
     @AppStorage(AppSettings.lineNumbersKey) private var lineNumbers = AppSettings.defaultLineNumbers
 
+    /// Bound to the frontmost Markdown document's preview state; nil (and so
+    /// disabled) for plain-text documents or when no document is focused.
+    @FocusedValue(\.previewing) private var previewing
+
     var body: some Commands {
         CommandGroup(before: .toolbar) {
+            Toggle("Show Preview", isOn: Binding(
+                get: { previewing?.wrappedValue ?? false },
+                set: { previewing?.wrappedValue = $0 }
+            ))
+            .keyboardShortcut("p", modifiers: [.command, .shift])
+            .disabled(previewing == nil)
+
+            Divider()
+
             Toggle("Word Wrap", isOn: $wordWrap)
             Toggle("Line Numbers", isOn: $lineNumbers)
 
