@@ -21,8 +21,15 @@ import AppKit
 struct MarkdownRenderer {
     var fontSize: CGFloat = EditorTheme.defaultFontSize
 
+    /// Directory of the document being previewed, for resolving relative
+    /// image paths. Remote images are never fetched regardless.
+    var baseURL: URL?
+
     /// Indentation added per list-nesting level and for blockquotes.
     private let indentUnit: CGFloat = 22
+
+    /// Rendered content width (matches the editor's centered column).
+    private var contentWidth: CGFloat { EditorTheme.maxContentWidth - 2 * EditorTheme.padding }
 
     // MARK: - Entry point
 
@@ -48,7 +55,7 @@ struct MarkdownRenderer {
     /// A leaf block (paragraph, heading, code block, …) with its runs.
     private struct Block {
         var intent: PresentationIntent?
-        var runs: [(text: String, inline: InlinePresentationIntent?, link: URL?)] = []
+        var runs: [(text: String, inline: InlinePresentationIntent?, link: URL?, image: URL?)] = []
     }
 
     private func build(from parsed: AttributedString) -> NSAttributedString {
@@ -64,7 +71,7 @@ struct MarkdownRenderer {
                 blocks.append(Block(intent: intent))
             }
             previousLeafIdentity = leafIdentity
-            blocks[blocks.count - 1].runs.append((text, run.inlinePresentationIntent, run.link))
+            blocks[blocks.count - 1].runs.append((text, run.inlinePresentationIntent, run.link, run.imageURL))
         }
 
         let result = NSMutableAttributedString()
@@ -311,10 +318,14 @@ struct MarkdownRenderer {
     // MARK: - Inline rendering
 
     private func inlineAttributed(
-        _ run: (text: String, inline: InlinePresentationIntent?, link: URL?),
+        _ run: (text: String, inline: InlinePresentationIntent?, link: URL?, image: URL?),
         baseFont: NSFont,
         quoted: Bool
     ) -> NSAttributedString {
+        if let image = run.image {
+            return imageAttributed(altText: run.text, url: image)
+        }
+
         var attributes: [NSAttributedString.Key: Any] = [:]
         let inline = run.inline
 
@@ -337,6 +348,48 @@ struct MarkdownRenderer {
         }
 
         return NSAttributedString(string: run.text, attributes: attributes)
+    }
+
+    /// A local image as a scaled attachment; anything not loadable (remote,
+    /// missing, or sandbox-denied) falls back to its alt text.
+    private func imageAttributed(altText: String, url: URL) -> NSAttributedString {
+        // Never fetch remote images (privacy §30) — show alt text as a link.
+        if let scheme = url.scheme?.lowercased(), scheme == "http" || scheme == "https" {
+            return NSAttributedString(string: altText.isEmpty ? url.absoluteString : altText, attributes: [
+                .font: EditorTheme.bodyFont(monospaced: false, size: fontSize),
+                .foregroundColor: EditorTheme.linkColor,
+                .link: url,
+            ])
+        }
+
+        // Resolve relative paths against the document's directory.
+        // appendingPathComponent treats baseURL as a directory regardless of
+        // a trailing slash, and handles embedded subdirectories.
+        let resolved: URL
+        if url.scheme != nil {
+            resolved = url
+        } else if let baseURL {
+            resolved = baseURL.appendingPathComponent(url.relativePath)
+        } else {
+            resolved = url
+        }
+
+        if let image = NSImage(contentsOf: resolved) {
+            let natural = image.size
+            let width = min(natural.width, contentWidth)
+            let scale = natural.width > 0 ? width / natural.width : 1
+            let attachment = NSTextAttachment()
+            attachment.image = image
+            attachment.bounds = NSRect(x: 0, y: 0, width: width, height: natural.height * scale)
+            return NSAttributedString(attachment: attachment)
+        }
+
+        // Missing / unreadable: quiet alt-text placeholder.
+        let label = altText.isEmpty ? "(image)" : altText
+        return NSAttributedString(string: "🖼 \(label)", attributes: [
+            .font: EditorTheme.bodyFont(monospaced: false, size: fontSize),
+            .foregroundColor: EditorTheme.quoteColor,
+        ])
     }
 
     private func styledFont(base: NSFont, inline: InlinePresentationIntent?) -> NSFont {

@@ -53,11 +53,14 @@ struct PreviewView: NSViewRepresentable {
         context.coordinator.textView = textView
         context.coordinator.render(document: document, fontSize: fontSize)
 
-        // Become first responder so Esc (cancelOperation) reaches this view.
+        // Become first responder so Esc (cancelOperation) reaches this view,
+        // and re-render now that the window (and its represented URL, used to
+        // resolve relative image paths) is available.
         // The find bar, when open, takes the responder chain first, so ⌘F's
         // own Esc still closes the search before this exits Preview.
         DispatchQueue.main.async { [weak textView] in
             textView?.window?.makeFirstResponder(textView)
+            context.coordinator.render(document: document, fontSize: fontSize)
         }
         return scrollView
     }
@@ -82,7 +85,9 @@ struct PreviewView: NSViewRepresentable {
 
         func render(document: TextDocument, fontSize: CGFloat) {
             guard let textView else { return }
-            let rendered = MarkdownRenderer(fontSize: fontSize).render(document.textStorage.string)
+            let baseURL = textView.window?.representedURL?.deletingLastPathComponent()
+            let renderer = MarkdownRenderer(fontSize: fontSize, baseURL: baseURL)
+            let rendered = renderer.render(document.textStorage.string)
             textView.textStorage?.setAttributedString(rendered)
             renderedText = document.textStorage.string
             renderedSize = fontSize
