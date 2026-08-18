@@ -25,6 +25,7 @@ final class CodeSyntaxStyler: NSObject, SyntaxHighlighting {
     enum Language: Equatable {
         case json
         case yaml
+        case toml
     }
 
     var fontSize: CGFloat = EditorTheme.defaultFontSize
@@ -93,10 +94,20 @@ final class CodeSyntaxStyler: NSObject, SyntaxHighlighting {
             }
         case .yaml:
             // A `#` comment (whole-line or trailing) recedes.
-            if let comment = Self.yamlComment.firstMatch(in: text, range: full) {
+            if let comment = Self.hashComment.firstMatch(in: text, range: full) {
                 storage.addAttribute(.foregroundColor, value: EditorTheme.syntaxCommentColor, range: absolute(comment.range(at: 1)))
             }
             if let key = Self.yamlKey.firstMatch(in: text, range: full) {
+                storage.addAttribute(.foregroundColor, value: EditorTheme.syntaxKeyColor, range: absolute(key.range(at: 1)))
+            }
+        case .toml:
+            if let comment = Self.hashComment.firstMatch(in: text, range: full) {
+                storage.addAttribute(.foregroundColor, value: EditorTheme.syntaxCommentColor, range: absolute(comment.range(at: 1)))
+            }
+            // A `[table]` / `[[array]]` header, or a `key =` assignment.
+            if let table = Self.tomlTable.firstMatch(in: text, range: full) {
+                storage.addAttribute(.foregroundColor, value: EditorTheme.syntaxKeyColor, range: absolute(table.range(at: 1)))
+            } else if let key = Self.tomlKey.firstMatch(in: text, range: full) {
                 storage.addAttribute(.foregroundColor, value: EditorTheme.syntaxKeyColor, range: absolute(key.range(at: 1)))
             }
         }
@@ -111,6 +122,13 @@ final class CodeSyntaxStyler: NSObject, SyntaxHighlighting {
     /// indentation and an optional `- ` sequence marker.
     private static let yamlKey = try! NSRegularExpression(pattern: "^[ \\t]*(?:-[ \\t]+)?([\\w.$-]+)[ \\t]*:(?:[ \\t]|$)")
 
-    /// A YAML comment: `#` preceded by start-of-line or whitespace, to EOL.
-    private static let yamlComment = try! NSRegularExpression(pattern: "(?:^|[ \\t])(#.*)$")
+    /// A `#` comment (YAML and TOML): preceded by start-of-line or
+    /// whitespace, to end of line.
+    private static let hashComment = try! NSRegularExpression(pattern: "(?:^|[ \\t])(#.*)$")
+
+    /// A TOML `[table]` or `[[array-of-tables]]` header.
+    private static let tomlTable = try! NSRegularExpression(pattern: "^[ \\t]*(\\[\\[?[^\\]\\n]+\\]\\]?)")
+
+    /// A TOML `key =` assignment: bare, dotted, or quoted key before `=`.
+    private static let tomlKey = try! NSRegularExpression(pattern: "^[ \\t]*(\"(?:[^\"\\\\]|\\\\.)*\"|'[^'\\n]*'|[\\w.$-]+)[ \\t]*=")
 }

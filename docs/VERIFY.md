@@ -26,6 +26,9 @@ runners, and the unsigned smoke bundle).
 - [ ] `.txt` shows Tilde in Open With
 - [ ] `.json` / `.log` / `.yml` open via Open With (plain text mode)
 - [ ] "Get Info → Change All" association sticks
+- [ ] `.toml` opens as text and shows key highlighting (needs the imported
+      `io.toml.toml` UTI to register — verify on a clean install, since
+      LaunchServices caches the dynamic type)
 
 ## Document behavior
 

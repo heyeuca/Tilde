@@ -10,6 +10,9 @@ import UniformTypeIdentifiers
 extension UTType {
     /// Markdown is not a system-declared type; Tilde imports it (see Info.plist).
     static let markdown = UTType(importedAs: "net.daringfireball.markdown")
+    /// TOML has no system UTI either; Tilde imports it so `.toml` files are
+    /// recognized as plain text and open (see Info.plist).
+    static let toml = UTType(importedAs: "io.toml.toml")
 }
 
 /// A plain-text document.
@@ -33,7 +36,7 @@ final class TextDocument: ReferenceFileDocument {
     /// `.text` admits the broader family (JSON, YAML, XML, …) via Open With —
     /// all treated as plain text (PRODUCT.md §6). Writable types stay equal
     /// to readable so every file that opens can also be saved back.
-    static var readableContentTypes: [UTType] { [.plainText, .markdown, .text] }
+    static var readableContentTypes: [UTType] { [.plainText, .markdown, .toml, .text] }
 
     init() {
         textStorage = NSTextStorage()

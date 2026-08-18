@@ -38,6 +38,7 @@ struct TextEditorView: NSViewRepresentable {
         switch fileURL?.pathExtension.lowercased() {
         case "json": return .json
         case "yaml", "yml": return .yaml
+        case "toml": return .toml
         default: return nil
         }
     }
