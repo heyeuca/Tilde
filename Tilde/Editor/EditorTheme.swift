@@ -114,4 +114,9 @@ enum EditorTheme {
     }
 
     static var gutterColor: NSColor { .tertiaryLabelColor }
+
+    /// When the gutter is shown it provides the left reading margin, so the
+    /// text view's own horizontal inset shrinks to a small gap beside the
+    /// numbers instead of the full `padding`.
+    static let gutterTextInset: CGFloat = 6
 }

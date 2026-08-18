@@ -13,15 +13,20 @@ import AppKit
 final class LineNumberRulerView: NSRulerView {
     private weak var textView: NSTextView?
 
+    /// Space left of the digits (the reading margin) and between the digits
+    /// and the text.
+    private let leadingPadding: CGFloat = 14
+    private let trailingPadding: CGFloat = 10
+
     init(textView: NSTextView, scrollView: NSScrollView) {
         self.textView = textView
         super.init(scrollView: scrollView, orientation: .verticalRuler)
         clientView = textView
-        ruleThickness = 44
+        updateThickness()
 
         NotificationCenter.default.addObserver(
             self,
-            selector: #selector(invalidate),
+            selector: #selector(textChanged),
             name: NSText.didChangeNotification,
             object: textView
         )
@@ -55,6 +60,21 @@ final class LineNumberRulerView: NSRulerView {
 
     @objc private func invalidate() {
         needsDisplay = true
+    }
+
+    @objc private func textChanged() {
+        updateThickness()
+        needsDisplay = true
+    }
+
+    /// Width fits the document's largest line number: the gutter is snug for a
+    /// short file and only widens when the line count grows another digit.
+    private func updateThickness() {
+        let lineCount = (textView?.string as NSString?)?.components(separatedBy: "\n").count ?? 1
+        let digits = max(2, String(max(lineCount, 1)).count)
+        let digitWidth = ("8" as NSString).size(withAttributes: [.font: EditorTheme.gutterFont]).width
+        let thickness = (leadingPadding + digitWidth * CGFloat(digits) + trailingPadding).rounded(.up)
+        if ruleThickness != thickness { ruleThickness = thickness }
     }
 
     override func drawHashMarksAndLabels(in rect: NSRect) {
@@ -130,7 +150,7 @@ final class LineNumberRulerView: NSRulerView {
                 labelY = y + baseline - capCentering - EditorTheme.gutterFont.ascender
             }
             label.draw(at: NSPoint(
-                x: ruleThickness - labelSize.width - 8,
+                x: ruleThickness - labelSize.width - trailingPadding,
                 y: labelY
             ))
 
