@@ -45,12 +45,17 @@ Plus: `EditorView` gains the mode state, `TildeApp` the menu command.
 - **ZStack, not view swap**: the editor stays alive underneath (opacity 0,
   hit-testing off) so caret, scroll, and IME state survive the round trip.
   The Reader view is created lazily on first use.
-- Menu: View → “Show Reader” / checkmark, `⌘⇧R`, enabled only for
-  Markdown documents. Wiring: `focusedSceneValue` binding read by
-  `ViewCommands` via `@FocusedValue` (same pattern available for future
-  per-window commands).
-- Esc in Reader returns to the editor: `ReaderTextView` subclass
-  overrides `cancelOperation(_:)`.
+- Three entry points, all driving the same `isReaderMode` binding:
+  1. **Title-bar toggle** — a single `.toolbar` item (`Toggle` in
+     `.button` style) beside the file name, shown only for Markdown
+     documents. Window uses `.unifiedCompact` toolbar style so there is no
+     separate toolbar row; plain-text/config windows show no button and
+     stay chrome-free. The book icon fills/accents when Reader is active.
+  2. **Menu**: View → “Show Reader” / “Hide Reader”, `⌘⇧R`, Safari-style
+     dynamic label. Wiring: `focusedSceneValue` binding read by
+     `ViewCommands` via `@FocusedValue`.
+  3. **Esc** in Reader returns to the editor: `ReaderTextView` subclass
+     overrides `cancelOperation(_:)`.
 - Window subtitle shows “Reader” while active (`navigationSubtitle`).
 
 ## 3. Rendering rules (EditorTheme continuity)

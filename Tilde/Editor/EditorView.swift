@@ -47,6 +47,19 @@ struct EditorView: View {
         .ignoresSafeArea()
         .navigationSubtitle(isReaderMode ? "Reader" : "")
         .publishReaderToggle($isReaderMode, enabled: document.isMarkdown)
+        .toolbar {
+            // A single quiet toggle in the title bar — only for Markdown
+            // documents, so plain-text and config windows stay chrome-free.
+            if document.isMarkdown {
+                ToolbarItem(placement: .primaryAction) {
+                    Toggle(isOn: $isReaderMode) {
+                        Label("Reader", systemImage: "book")
+                    }
+                    .toggleStyle(.button)
+                    .help("Reader (⌘⇧R)")
+                }
+            }
+        }
     }
 }
 

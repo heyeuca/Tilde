@@ -15,6 +15,9 @@ struct TildeApp: App {
         DocumentGroup(newDocument: { TextDocument() }) { configuration in
             EditorView(document: configuration.document, fileURL: configuration.fileURL)
         }
+        // A compact unified title bar: the Reader toggle sits beside the file
+        // name with no separate toolbar row.
+        .windowToolbarStyle(.unifiedCompact)
         .commands {
             // Standard Find menu (⌘F / ⌘G / ⌥⌘F), routed to the text view's find bar.
             TextEditingCommands()
