@@ -75,6 +75,9 @@ enum EditorTheme {
 
     static var quoteColor: NSColor { .secondaryLabelColor }
 
+    /// The vertical bar drawn at the left edge of a rendered blockquote.
+    static var quoteBarColor: NSColor { .quaternaryLabelColor }
+
     static var linkColor: NSColor { .linkColor }
 
     /// Subtle fill behind inline code and code blocks.

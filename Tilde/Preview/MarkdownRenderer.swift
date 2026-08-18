@@ -251,14 +251,20 @@ struct MarkdownRenderer {
         }
 
         let listIndent = CGFloat(listDepth) * indentUnit
-        let quoteIndent = isQuote ? indentUnit : 0
         if listDepth > 0 {
+            let quoteIndent = isQuote ? indentUnit : 0
             style.firstLineHeadIndent = CGFloat(listDepth - 1) * indentUnit + quoteIndent
             style.headIndent = listIndent + quoteIndent
             style.tabStops = [NSTextTab(textAlignment: .left, location: listIndent + quoteIndent)]
-        } else if isQuote {
-            style.firstLineHeadIndent = quoteIndent
-            style.headIndent = quoteIndent
+        }
+        // Blockquote: a quiet left bar with padding, via a text block.
+        if isQuote, listDepth == 0 {
+            let quoteBlock = NSTextBlock()
+            quoteBlock.setValue(100, type: .percentageValueType, for: .width)
+            quoteBlock.setWidth(3, type: .absoluteValueType, for: .border, edge: .minX)
+            quoteBlock.setBorderColor(EditorTheme.quoteBarColor, for: .minX)
+            quoteBlock.setWidth(indentUnit, type: .absoluteValueType, for: .padding, edge: .minX)
+            style.textBlocks = [quoteBlock]
         }
 
         let blockRange = NSRange(location: blockStart, length: result.length - blockStart)
@@ -276,15 +282,20 @@ struct MarkdownRenderer {
         result.append(NSAttributedString(string: text, attributes: [
             .font: EditorTheme.codeFont(size: fontSize),
             .foregroundColor: NSColor.textColor,
-            .backgroundColor: EditorTheme.codeBackgroundColor,
         ]))
         result.append(NSAttributedString(string: "\n"))
 
+        // One filled block behind the whole listing (a text block, like a
+        // table cell) instead of a ragged per-line background.
+        let codeBlock = NSTextBlock()
+        codeBlock.setValue(100, type: .percentageValueType, for: .width)
+        codeBlock.backgroundColor = EditorTheme.codeBackgroundColor
+        codeBlock.setWidth(10, type: .absoluteValueType, for: .padding)
+
         let style = NSMutableParagraphStyle()
+        style.textBlocks = [codeBlock]
         style.lineSpacing = EditorTheme.lineSpacing(for: EditorTheme.codeFont(size: fontSize))
         style.paragraphSpacing = EditorTheme.lineSpacing(for: EditorTheme.bodyFont(monospaced: false, size: fontSize))
-        style.firstLineHeadIndent = indentUnit
-        style.headIndent = indentUnit
         result.addAttribute(.paragraphStyle,
                             value: style,
                             range: NSRange(location: blockStart, length: result.length - blockStart))
