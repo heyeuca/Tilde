@@ -81,6 +81,9 @@ struct TextEditorView: NSViewRepresentable {
 
         let scrollView = NSScrollView()
         scrollView.hasVerticalScroller = true
+        // No scroller when the document fits — a resting scrollbar is visual
+        // noise in a short file.
+        scrollView.autohidesScrollers = true
         scrollView.drawsBackground = true
         scrollView.backgroundColor = .textBackgroundColor
         scrollView.documentView = textView
