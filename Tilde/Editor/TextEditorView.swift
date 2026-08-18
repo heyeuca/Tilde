@@ -19,6 +19,8 @@ struct TextEditorView: NSViewRepresentable {
     var wordWrap: Bool
     var showLineNumbers: Bool
     var markdownStyling: Bool
+    /// The document's file URL, used to pick a code highlighter by extension.
+    var fileURL: URL?
 
     /// The settings state last pushed into AppKit, for cheap diffing.
     struct AppliedSettings: Equatable {
@@ -26,6 +28,18 @@ struct TextEditorView: NSViewRepresentable {
         var wordWrap: Bool
         var showLineNumbers: Bool
         var stylerActive: Bool
+        var codeLanguage: CodeSyntaxStyler.Language?
+    }
+
+    /// JSON/YAML highlighting is chosen by extension, and never for a
+    /// Markdown document.
+    private var codeLanguage: CodeSyntaxStyler.Language? {
+        guard !document.isMarkdown else { return nil }
+        switch fileURL?.pathExtension.lowercased() {
+        case "json": return .json
+        case "yaml", "yml": return .yaml
+        default: return nil
+        }
     }
 
     private var desiredSettings: AppliedSettings {
@@ -33,7 +47,8 @@ struct TextEditorView: NSViewRepresentable {
             fontSize: fontSize,
             wordWrap: wordWrap,
             showLineNumbers: showLineNumbers,
-            stylerActive: document.isMarkdown && markdownStyling
+            stylerActive: document.isMarkdown && markdownStyling,
+            codeLanguage: codeLanguage
         )
     }
 
@@ -123,8 +138,12 @@ struct TextEditorView: NSViewRepresentable {
         /// The document's undo manager (from the SwiftUI environment), so text
         /// edits drive the window's dirty state, autosave, and ⌘Z.
         var undoManager: UndoManager?
-        /// Attribute-only Markdown styling; present while styling is active.
-        var styler: MarkdownStyler?
+        /// The Markdown styler (also drives plain-text body maintenance) and
+        /// the code highlighter are kept so their incremental state survives
+        /// setting changes; only one is the text storage's delegate at a time.
+        private var markdownStyler: MarkdownStyler?
+        private var codeStyler: CodeSyntaxStyler?
+        private weak var activeHighlighter: (NSObject & SyntaxHighlighting)?
         var applied: AppliedSettings?
         private(set) weak var attachedDocument: TextDocument?
 
@@ -146,17 +165,31 @@ struct TextEditorView: NSViewRepresentable {
         // MARK: - Settings
 
         func apply(_ settings: AppliedSettings, to textView: NSTextView, in scrollView: NSScrollView) {
-            // The styler is always attached: even plain documents need live
-            // body-attribute and empty-line-spacing maintenance. Markdown
-            // rules run only when stylerActive.
-            let styler = self.styler ?? MarkdownStyler()
-            styler.fontSize = settings.fontSize
-            styler.stylesMarkdown = settings.stylerActive
-            styler.usesMonospacedBody = !(attachedDocument?.isMarkdown ?? false)
-            self.styler = styler
-            attachedDocument?.textStorage.delegate = styler
-
             let monospaced = !(attachedDocument?.isMarkdown ?? false)
+
+            // Pick the highlighter for this document: Markdown styling, code
+            // highlighting by extension, or plain (Markdown styler in a
+            // body-only mode, which also maintains empty-line spacing).
+            let highlighter: NSObject & SyntaxHighlighting
+            if settings.stylerActive {
+                let s = markdownStyler ?? MarkdownStyler(); markdownStyler = s
+                s.stylesMarkdown = true
+                s.usesMonospacedBody = false
+                highlighter = s
+            } else if let language = settings.codeLanguage {
+                let s = codeStyler ?? CodeSyntaxStyler(); codeStyler = s
+                s.language = language
+                highlighter = s
+            } else {
+                let s = markdownStyler ?? MarkdownStyler(); markdownStyler = s
+                s.stylesMarkdown = false
+                s.usesMonospacedBody = true
+                highlighter = s
+            }
+            highlighter.fontSize = settings.fontSize
+            activeHighlighter = highlighter
+            attachedDocument?.textStorage.delegate = highlighter
+
             textView.typingAttributes = EditorTheme.bodyAttributes(
                 monospaced: monospaced,
                 size: settings.fontSize
@@ -205,11 +238,10 @@ struct TextEditorView: NSViewRepresentable {
 
         // MARK: - Typography
 
-        /// Restyles the whole buffer through the styler (which handles both
-        /// Markdown and plain body maintenance).
+        /// Restyles the whole buffer through the active highlighter.
         func restyleAll() {
             guard let document = attachedDocument else { return }
-            styler?.restyleAll(document.textStorage)
+            activeHighlighter?.restyleAll(document.textStorage)
         }
 
         /// Markdown documents keep their content no wider than

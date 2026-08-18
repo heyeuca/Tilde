@@ -75,11 +75,14 @@ visible-syntax styling stays the default experience.
 
 ## Phase 3 — as demand proves out
 
-### Very light syntax highlighting (PRODUCT §33.2)
+### Very light syntax highlighting (PRODUCT §33.2) — DONE
 
-JSON/YAML/TOML coloring, strictly line-based and attribute-only —
-the MarkdownStyler architecture (incremental, zero-dependency) is designed
-to be cloned for this. Never expand toward LSP/IDE territory (§31).
+Shipped: JSON and YAML, keys-only tinting (values and punctuation stay
+default), YAML comments dimmed. Attribute-only, per-line, zero-dependency
+(`CodeSyntaxStyler`, a `SyntaxHighlighting` sibling of `MarkdownStyler`);
+language chosen by file extension via `DocumentGroup`'s `fileURL`; always
+on, no setting. Never expanded toward LSP/IDE territory (§31). Possible
+later: TOML, or tinting string/number values if demand appears.
 
 ### Viewport-priority initial styling (DESIGN.md known limit)
 

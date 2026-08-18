@@ -9,6 +9,7 @@ import SwiftUI
 /// them down as plain values.
 struct EditorView: View {
     var document: TextDocument
+    var fileURL: URL?
 
     @AppStorage(AppSettings.fontSizeKey) private var fontSize = AppSettings.defaultFontSize
     @AppStorage(AppSettings.wordWrapKey) private var wordWrap = AppSettings.defaultWordWrap
@@ -30,7 +31,8 @@ struct EditorView: View {
                 fontSize: clampedFontSize,
                 wordWrap: wordWrap,
                 showLineNumbers: lineNumbers,
-                markdownStyling: markdownStyling
+                markdownStyling: markdownStyling,
+                fileURL: fileURL
             )
             .opacity(isPreviewing ? 0 : 1)
 

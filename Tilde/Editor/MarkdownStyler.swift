@@ -16,7 +16,7 @@ import AppKit
 /// cross-line state; fence-line positions are cached and updated
 /// incrementally (shift by the edit delta, rescan only the edited
 /// paragraphs), so a keystroke never scans the whole document.
-final class MarkdownStyler: NSObject, NSTextStorageDelegate {
+final class MarkdownStyler: NSObject, SyntaxHighlighting {
 
     /// Current body font size; heading/code sizes derive from it.
     var fontSize: CGFloat = EditorTheme.defaultFontSize

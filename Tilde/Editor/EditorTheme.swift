@@ -91,6 +91,14 @@ enum EditorTheme {
     /// Corner radius of the code-block background fill.
     static let codeCornerRadius: CGFloat = 5
 
+    // MARK: - Syntax highlighting (JSON / YAML)
+
+    /// Only keys are tinted — values and punctuation stay default, keeping
+    /// highlighting quiet (PRODUCT.md §33.2). Comments recede like markers.
+    static var syntaxKeyColor: NSColor { .systemBlue }
+
+    static var syntaxCommentColor: NSColor { .tertiaryLabelColor }
+
     /// Code spans/blocks sit a point smaller so the monospaced face
     /// doesn't look oversized next to SF Pro.
     static func codeFont(size: CGFloat) -> NSFont {
