@@ -38,7 +38,15 @@ struct TextEditorView: NSViewRepresentable {
     }
 
     func makeNSView(context: Context) -> NSScrollView {
-        let textView = NSTextView(usingTextLayoutManager: true)
+        // Build the TextKit 2 stack explicitly so the text view can be our
+        // EditorTextView subclass (which paints code-block backgrounds).
+        let contentStorage = NSTextContentStorage()
+        let layoutManager = NSTextLayoutManager()
+        contentStorage.addTextLayoutManager(layoutManager)
+        let container = NSTextContainer(size: NSSize(width: 0, height: CGFloat.greatestFiniteMagnitude))
+        layoutManager.textContainer = container
+
+        let textView = EditorTextView(frame: .zero, textContainer: container)
         textView.delegate = context.coordinator
 
         // Editing behavior

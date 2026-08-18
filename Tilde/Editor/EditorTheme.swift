@@ -83,6 +83,14 @@ enum EditorTheme {
     /// Subtle fill behind inline code and code blocks.
     static var codeBackgroundColor: NSColor { .quaternarySystemFill }
 
+    /// Marks a character range as belonging to a fenced code block so the
+    /// editor can draw one unified background behind it (a per-character
+    /// `.backgroundColor` would render as ragged per-line strips instead).
+    static let codeBlockMarker = NSAttributedString.Key("tildeCodeBlock")
+
+    /// Corner radius of the code-block background fill.
+    static let codeCornerRadius: CGFloat = 5
+
     /// Code spans/blocks sit a point smaller so the monospaced face
     /// doesn't look oversized next to SF Pro.
     static func codeFont(size: CGFloat) -> NSFont {

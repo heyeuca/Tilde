@@ -250,10 +250,12 @@ final class MarkdownStyler: NSObject, NSTextStorageDelegate {
 
         guard stylesMarkdown else { return }
 
-        // Code block interior and fence marker lines.
+        // Code block interior and fence marker lines. The unified background
+        // is drawn by the text view from this marker; a per-character
+        // background would look ragged line to line.
         if insideFence {
             storage.addAttribute(.font, value: EditorTheme.codeFont(size: fontSize), range: textOnly)
-            storage.addAttribute(.backgroundColor, value: EditorTheme.codeBackgroundColor, range: line)
+            storage.addAttribute(EditorTheme.codeBlockMarker, value: true, range: line)
             if string.range(of: "```", options: .anchored, range: line).location != NSNotFound {
                 storage.addAttribute(.foregroundColor, value: EditorTheme.markerColor, range: line)
             }

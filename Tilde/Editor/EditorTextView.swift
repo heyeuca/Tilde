@@ -1,0 +1,74 @@
+//
+//  EditorTextView.swift
+//  Tilde
+//
+
+import AppKit
+
+/// The editor's `NSTextView`, subclassed only to paint one continuous
+/// background behind fenced code blocks.
+///
+/// Code lines are tagged with `EditorTheme.codeBlockMarker` by the styler;
+/// a per-character `.backgroundColor` would render as ragged per-line
+/// strips, so instead the layout fragments of each contiguous marked run
+/// are unioned and filled as a single rounded rectangle.
+final class EditorTextView: NSTextView {
+    override func drawBackground(in rect: NSRect) {
+        super.drawBackground(in: rect)
+
+        guard
+            let layoutManager = textLayoutManager,
+            let contentManager = layoutManager.textContentManager,
+            let textStorage,
+            textStorage.length > 0
+        else { return }
+
+        let inset = textContainerInset
+        let fillRect = { (union: CGRect) -> NSRect in
+            NSRect(
+                x: inset.width,
+                y: union.minY + inset.height,
+                width: max(0, self.bounds.width - inset.width * 2),
+                height: union.height
+            )
+        }
+
+        EditorTheme.codeBackgroundColor.setFill()
+
+        var union = CGRect.null
+        func flush() {
+            guard !union.isNull else { return }
+            NSBezierPath(
+                roundedRect: fillRect(union),
+                xRadius: EditorTheme.codeCornerRadius,
+                yRadius: EditorTheme.codeCornerRadius
+            ).fill()
+            union = .null
+        }
+
+        // Only walk the visible viewport so scrolling stays cheap.
+        let viewport = layoutManager.textViewportLayoutController.viewportRange
+            ?? layoutManager.documentRange
+        let maxY = rect.maxY
+
+        layoutManager.enumerateTextLayoutFragments(from: viewport.location, options: [.ensuresLayout]) { fragment in
+            let frame = fragment.layoutFragmentFrame
+            if frame.minY + inset.height > maxY { return false }
+
+            let offset = contentManager.offset(
+                from: contentManager.documentRange.location,
+                to: fragment.rangeInElement.location
+            )
+            let isCode = offset < textStorage.length
+                && textStorage.attribute(EditorTheme.codeBlockMarker, at: offset, effectiveRange: nil) != nil
+
+            if isCode {
+                union = union.union(frame)
+            } else {
+                flush()
+            }
+            return true
+        }
+        flush()
+    }
+}
