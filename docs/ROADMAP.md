@@ -77,12 +77,25 @@ visible-syntax styling stays the default experience.
 
 ### Very light syntax highlighting (PRODUCT §33.2) — DONE
 
-Shipped: JSON and YAML, keys-only tinting (values and punctuation stay
-default), YAML comments dimmed. Attribute-only, per-line, zero-dependency
-(`CodeSyntaxStyler`, a `SyntaxHighlighting` sibling of `MarkdownStyler`);
-language chosen by file extension via `DocumentGroup`'s `fileURL`; always
-on, no setting. Never expanded toward LSP/IDE territory (§31). Possible
-later: TOML, or tinting string/number values if demand appears.
+Shipped in two layers, both attribute-only and zero-dependency:
+
+1. **Standalone config files** — `.json` / `.yaml` / `.toml`, keys-only
+   tinting (values and punctuation stay default), comments dimmed. Table
+   headers tinted for TOML. `CodeSyntaxStyler`, a `SyntaxHighlighting`
+   sibling of `MarkdownStyler`; language chosen by file extension via
+   `DocumentGroup`'s `fileURL` (TOML needs the imported `io.toml.toml`
+   UTI to open); always on, no setting.
+
+2. **Fenced code blocks in the Markdown preview** — a generic left-to-right
+   lexer (`CodeHighlighter`, preview only) colors the four token kinds every
+   language shares: comments, strings, numbers, and (for ~16 known
+   languages) keywords. Unknown languages still get strings/comments/numbers
+   via a C-like default. No `highlight.js`, no tree-sitter — the same
+   pure-Swift, regex/scan approach CotEditor uses, kept lightweight.
+
+Deliberately NOT done: standalone code files (`.css`, `.swift`, …) stay
+plain — that would make Tilde a code editor (§31). Fenced highlighting is a
+reading aid inside Markdown, not general code editing.
 
 ### Viewport-priority initial styling (DESIGN.md known limit)
 

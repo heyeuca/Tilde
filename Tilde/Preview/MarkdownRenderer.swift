@@ -279,10 +279,19 @@ struct MarkdownRenderer {
         // so the block separator is the only gap after.
         if text.hasSuffix("\n") { text.removeLast() }
 
+        let codeStart = result.length
         result.append(NSAttributedString(string: text, attributes: [
             .font: EditorTheme.codeFont(size: fontSize),
             .foregroundColor: NSColor.textColor,
         ]))
+
+        // Generic lexical highlighting of the listing (comments, strings,
+        // numbers, keywords) — tinting only, the mono font is unchanged.
+        for span in CodeHighlighter().spans(for: text, language: language) {
+            let range = NSRange(location: codeStart + span.range.location, length: span.range.length)
+            result.addAttribute(.foregroundColor, value: span.color, range: range)
+        }
+
         result.append(NSAttributedString(string: "\n"))
 
         // One filled block behind the whole listing (a text block, like a

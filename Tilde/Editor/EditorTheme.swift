@@ -99,6 +99,16 @@ enum EditorTheme {
 
     static var syntaxCommentColor: NSColor { .tertiaryLabelColor }
 
+    // MARK: - Code fence highlighting (preview only)
+
+    /// A restrained, appearance-adaptive palette for code inside rendered
+    /// Markdown fences. Comments recede; keyword/string/number get one quiet
+    /// accent each.
+    static var codeKeywordColor: NSColor { .systemPurple }
+    static var codeStringColor: NSColor { .systemGreen }
+    static var codeNumberColor: NSColor { .systemBlue }
+    static var codeCommentColor: NSColor { .tertiaryLabelColor }
+
     /// Code spans/blocks sit a point smaller so the monospaced face
     /// doesn't look oversized next to SF Pro.
     static func codeFont(size: CGFloat) -> NSFont {
