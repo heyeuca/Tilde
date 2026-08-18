@@ -1,8 +1,8 @@
-# Markdown Preview (⌘⇧P) — Design
+# Markdown Reader (⌘⇧R) — Design
 
 Post-MVP Phase 2 feature (see ROADMAP.md). Read-only rendered Markdown as a
 **mode**, not a split view (PRODUCT.md §8). Decisions settled 2026-08-15:
-full v1 scope (tables + local images), return via ⌘⇧P / Esc, mode shown in
+full v1 scope (tables + local images), return via ⌘⇧R / Esc, mode shown in
 the window subtitle.
 
 ---
@@ -19,7 +19,7 @@ AttributedString(markdown:, interpretedSyntax: .full)   Apple parser, zero deps
 MarkdownRenderer                                         intent → attributes
         │   NSAttributedString (EditorTheme tokens)
         ▼
-PreviewTextView (read-only NSTextView)                   selection/copy/⌘F free
+ReaderTextView (read-only NSTextView)                   selection/copy/⌘F free
 ```
 
 Key fact driving the design: Apple's parser identifies block structure
@@ -33,25 +33,25 @@ logic → fully testable with the CLI runner on the no-Xcode machine.
 ```text
 Tilde/Preview/
 ├── MarkdownRenderer.swift   String → NSAttributedString
-└── PreviewView.swift        NSViewRepresentable (read-only NSTextView)
+└── ReaderView.swift        NSViewRepresentable (read-only NSTextView)
 ```
 
 Plus: `EditorView` gains the mode state, `TildeApp` the menu command.
 
 ## 2. Mode switching
 
-- Per-window transient state: `@State var isPreviewing` in `EditorView`.
+- Per-window transient state: `@State var isReaderMode` in `EditorView`.
   Never persisted — a document always opens in the editor.
 - **ZStack, not view swap**: the editor stays alive underneath (opacity 0,
   hit-testing off) so caret, scroll, and IME state survive the round trip.
-  The preview view is created lazily on first use.
-- Menu: View → “Show Preview” / checkmark, `⌘⇧P`, enabled only for
+  The Reader view is created lazily on first use.
+- Menu: View → “Show Reader” / checkmark, `⌘⇧R`, enabled only for
   Markdown documents. Wiring: `focusedSceneValue` binding read by
   `ViewCommands` via `@FocusedValue` (same pattern available for future
   per-window commands).
-- Esc in preview returns to the editor: `PreviewTextView` subclass
+- Esc in Reader returns to the editor: `ReaderTextView` subclass
   overrides `cancelOperation(_:)`.
-- Window subtitle shows “Preview” while active (`navigationSubtitle`).
+- Window subtitle shows “Reader” while active (`navigationSubtitle`).
 
 ## 3. Rendering rules (EditorTheme continuity)
 
@@ -75,13 +75,13 @@ different app.
 | Image (local) | NSTextAttachment, scaled to fit content width (constraint B) |
 | Image (remote) | never fetched — alt text styled as a link (privacy §30) |
 
-### Constraint A — tables force TextKit 1 in the preview view
+### Constraint A — tables force TextKit 1 in the Reader view
 
 `NSTextTable` is not supported by TextKit 2; NSTextView falls back to
-TextKit 1 for content containing text blocks. Acceptable: the preview is
+TextKit 1 for content containing text blocks. Acceptable: the Reader is
 read-only and rendered per-toggle, so TK1 performance characteristics
-don't matter. The EDITOR stays TextKit 2 — only `PreviewTextView` is
-affected. Note: construct the preview NSTextView the classic way to avoid
+don't matter. The EDITOR stays TextKit 2 — only `ReaderTextView` is
+affected. Note: construct the Reader NSTextView the classic way to avoid
 mixed-mode surprises.
 
 ### Constraint B — sandbox blocks sibling images
@@ -100,18 +100,18 @@ that's a product decision (quiet app vs permission prompt), not v1.
 
 ## 4. Content, performance & scroll sync
 
-- Render happens on: entering preview, document instance change (Revert),
+- Render happens on: entering Reader, document instance change (Revert),
   font size change. NOT live-per-keystroke — there is no editing path
   while the editor is hidden.
 - **Performance**: Apple's `AttributedString(markdown:)` parser dominates
   the cost and cannot be sped up (measured: ~90 ms at 50 KB, ~170 ms at
   100 KB, ~1.8 s at 1 MB, ~7.5 s at 4 MB). Documents ≤ 256 KB render
   synchronously (no flash); larger ones render on a background queue with a
-  generation token so ⌘⇧P never freezes the UI. Verified with a size-sweep
+  generation token so ⌘⇧R never freezes the UI. Verified with a size-sweep
   benchmark and a 500-input renderer fuzz (no crashes).
 - Scroll sync: **deferred to v2.** Doing it well needs scroll observation
-  and restore on the editor side (already stable), and most previewed
-  documents start at the top anyway. Preview opens at the top for now.
+  and restore on the editor side (already stable), and most rendered
+  documents start at the top anyway. Reader opens at the top for now.
 
 ## 5. Failure policy
 
@@ -123,7 +123,7 @@ A fuzz test (random byte-noise + truncated markdown) asserts no crash.
 
 1. **Renderer core** — paragraphs, headings, lists, quotes, code blocks,
    HR, links, inline styles. CLI attribute tests (styler-test pattern)
-2. **Mode plumbing** — PreviewView, ZStack toggle, ⌘⇧P/Esc, menu item,
+2. **Mode plumbing** — ReaderView, ZStack toggle, ⌘⇧R/Esc, menu item,
    subtitle. Smoke-verify via osascript + screenshots
 3. **Tables** — NSTextTable rendering, alignment from column intents
 4. **Local images** — attachment loading, scaling, alt-text fallback
@@ -139,8 +139,8 @@ behavior and the whole feature under a full Xcode build (docs/VERIFY.md).
 
 ## 7. Explicitly not in v1
 
-- Scroll position sync between editor and preview (v2)
-- Live side-by-side or live-typing preview (mode only, §8)
+- Scroll position sync between editor and Reader (v2)
+- Live side-by-side or live-typing reader (mode only, §8)
 - Remote images,raw HTML, footnotes, task-list checkboxes (parser doesn't
   emit them anyway), syntax highlighting inside code blocks
-- Print/PDF export from preview (could ride on the same attributed string later)
+- Print/PDF export from Reader (could ride on the same attributed string later)

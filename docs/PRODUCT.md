@@ -273,7 +273,7 @@ It is:
 
 ---
 
-## 8. Markdown Preview
+## 8. Markdown Reader
 
 The MVP does not include a separate preview pane.
 
@@ -287,10 +287,10 @@ Tilde is not a Markdown IDE.
 
 Instead, the editor itself presents Markdown in a readable way.
 
-If there is a demonstrated need later, a **Preview Mode** could be added with a shortcut such as:
+If there is a demonstrated need later, a **Reader mode** could be added with a shortcut such as:
 
 ```text
-⌘⇧P
+⌘⇧R
 ```
 
 ---
@@ -871,7 +871,7 @@ This is enough for Tilde 1.0.
 
 Add these only after real-world use demonstrates a genuine need.
 
-### 1. Markdown Preview
+### 1. Markdown Reader
 
 A read-only rendered mode.
 

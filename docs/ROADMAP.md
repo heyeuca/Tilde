@@ -57,12 +57,12 @@ Everything here is verification and packaging, not features.
   return-to-open. No project concept, no file indexing.
 - **Cost**: medium. **Risk**: scope creep toward a file browser — resist.
 
-## Phase 2 — Markdown Preview (PRODUCT §33.1, ⌘⇧P)
+## Phase 2 — Markdown Reader (PRODUCT §33.1, ⌘⇧R)
 
 The headline post-MVP feature. Read-only rendered view; the editor's
 visible-syntax styling stays the default experience.
 
-- **Mode, not split**: ⌘⇧P swaps the editor for a rendered scroll view
+- **Mode, not split**: ⌘⇧R swaps the editor for a rendered scroll view
   (and back). No `Editor │ Preview` split (§8).
 - **Renderer**: start with `AttributedString(markdown:)` — its
   marker-stripping behavior is exactly right for read-only rendering
@@ -86,7 +86,7 @@ Shipped in two layers, both attribute-only and zero-dependency:
    `DocumentGroup`'s `fileURL` (TOML needs the imported `io.toml.toml`
    UTI to open); always on, no setting.
 
-2. **Fenced code blocks in the Markdown preview** — a generic left-to-right
+2. **Fenced code blocks in the Markdown Reader** — a generic left-to-right
    lexer (`CodeHighlighter`, preview only) colors the four token kinds every
    language shares: comments, strings, numbers, and (for ~16 known
    languages) keywords. Unknown languages still get strings/comments/numbers

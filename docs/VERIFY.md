@@ -44,9 +44,9 @@ runners, and the unsigned smoke bundle).
       including LaunchServices overhead)
 - [ ] 4 MB markdown opens in ~1 s, typing stays smooth
 
-## Markdown Preview (⌘⇧P)
+## Markdown Reader (⌘⇧R)
 
-- [ ] ⌘⇧P toggles preview; Esc returns to editor; subtitle shows "Preview"
+- [ ] ⌘⇧R toggles Reader; Esc returns to editor; subtitle shows "Reader"
 - [ ] Command disabled for plain-text (.txt) documents
 - [ ] Headings, lists, quotes, code blocks, HR, links, inline styles render
 - [ ] Tables render with borders and column alignment
@@ -54,7 +54,7 @@ runners, and the unsigned smoke bundle).
       bundle): a sibling `./image.png` is blocked by the sandbox and should
       show the alt-text fallback, NOT the image. Decide whether to add a
       security-scoped folder grant (product call) if this matters.
-- [ ] Large document (~1 MB+) preview does not freeze the UI (async render)
+- [ ] Large document (~1 MB+) Reader does not freeze the UI (async render)
 
 ## Icon
 

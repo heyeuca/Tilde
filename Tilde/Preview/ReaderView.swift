@@ -1,20 +1,20 @@
 //
-//  PreviewView.swift
+//  ReaderView.swift
 //  Tilde
 //
 
 import SwiftUI
 import AppKit
 
-/// Read-only rendered Markdown for Preview mode (⌘⇧P).
+/// Read-only rendered Markdown for Reader mode (⌘⇧R).
 ///
 /// Shares the editor's content width, padding, and semantic colors so
-/// entering Preview reads as the syntax markers dissolving. Selection,
+/// entering Reader reads as the syntax markers dissolving. Selection,
 /// copy, and ⌘F Find come from the underlying `NSTextView` for free.
-struct PreviewView: NSViewRepresentable {
+struct ReaderView: NSViewRepresentable {
     var document: TextDocument
     var fontSize: CGFloat
-    /// Called when the user presses Esc to leave Preview.
+    /// Called when the user presses Esc to leave Reader.
     var onExit: () -> Void
 
     func makeNSView(context: Context) -> NSScrollView {
@@ -62,7 +62,7 @@ struct PreviewView: NSViewRepresentable {
         // and re-render now that the window (and its represented URL, used to
         // resolve relative image paths) is available.
         // The find bar, when open, takes the responder chain first, so ⌘F's
-        // own Esc still closes the search before this exits Preview.
+        // own Esc still closes the search before this exits Reader.
         DispatchQueue.main.async { [weak textView] in
             textView?.window?.makeFirstResponder(textView)
             context.coordinator.render(document: document, fontSize: fontSize)
@@ -133,7 +133,7 @@ struct PreviewView: NSViewRepresentable {
         }
     }
 
-    /// NSTextView that leaves Preview on Esc.
+    /// NSTextView that leaves Reader on Esc.
     private final class ExitingTextView: NSTextView {
         var onExit: (() -> Void)?
         override func cancelOperation(_ sender: Any?) { onExit?() }

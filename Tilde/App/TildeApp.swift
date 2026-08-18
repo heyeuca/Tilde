@@ -33,18 +33,18 @@ struct ViewCommands: Commands {
     @AppStorage(AppSettings.wordWrapKey) private var wordWrap = AppSettings.defaultWordWrap
     @AppStorage(AppSettings.lineNumbersKey) private var lineNumbers = AppSettings.defaultLineNumbers
 
-    /// Bound to the frontmost Markdown document's preview state; nil (and so
+    /// Bound to the frontmost Markdown document's Reader state; nil (and so
     /// disabled) for plain-text documents or when no document is focused.
-    @FocusedValue(\.previewing) private var previewing
+    @FocusedValue(\.readerMode) private var readerMode
 
     var body: some Commands {
         CommandGroup(before: .toolbar) {
-            Toggle("Show Preview", isOn: Binding(
-                get: { previewing?.wrappedValue ?? false },
-                set: { previewing?.wrappedValue = $0 }
-            ))
-            .keyboardShortcut("p", modifiers: [.command, .shift])
-            .disabled(previewing == nil)
+            // Safari-style dynamic label and shortcut.
+            Button((readerMode?.wrappedValue == true) ? "Hide Reader" : "Show Reader") {
+                readerMode?.wrappedValue.toggle()
+            }
+            .keyboardShortcut("r", modifiers: [.command, .shift])
+            .disabled(readerMode == nil)
 
             Divider()
 

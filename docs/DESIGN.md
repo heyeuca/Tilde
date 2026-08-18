@@ -14,7 +14,7 @@ Companion to [PRODUCT.md](PRODUCT.md). PRODUCT.md defines *what*; this document 
 | Document type | **`ReferenceFileDocument`** (class) | Value-type `FileDocument` copies the whole string and re-evaluates SwiftUI on every keystroke; a reference type lets the editor own the text storage directly |
 | Editor view | **`NSTextView`** wrapped in `NSViewRepresentable` | Undo, Find bar, spell check, IME, drag & drop all built in |
 | Markdown display | **Syntax stays visible; attributes only** | Screen text == file text. No cursor mapping, no layout jumps. Markers rendered small/dim |
-| Fully rendered Markdown | **Post-MVP read-only Preview mode (`⌘⇧P`)** | Read-only removes all cursor-mapping complexity; Apple's `AttributedString(markdown:)` fits perfectly there |
+| Fully rendered Markdown | **Post-MVP read-only Reader mode (`⌘⇧R`)** | Read-only removes all cursor-mapping complexity; Apple's `AttributedString(markdown:)` fits perfectly there |
 | Markdown parser | **Custom lightweight line-based styler, zero dependencies** | "The Markdown parser should not become the center of the app's architecture" (PRODUCT.md §27) |
 | Settings storage | **`@AppStorage` / `UserDefaults`** | Settings are tiny (one screen); no config files |
 | Buffer ownership | **Document owns `NSTextStorage`; view renders it directly** | Round-tripping the text through SwiftUI copied+compared the whole buffer per keystroke (janky at 4MB). Content becomes a `String` only at save-snapshot time |
@@ -186,7 +186,7 @@ Each milestone ends in a state where the app builds, runs, and is demonstrably b
 
 ## 9. Out of Scope (v1)
 
-- Markdown Preview mode (`⌘⇧P`) — first post-MVP candidate; read-only render via `AttributedString(markdown:)`
+- Markdown Reader mode (`⌘⇧R`) — first post-MVP candidate; read-only render via `AttributedString(markdown:)`
 - Syntax highlighting for JSON/YAML/etc.
 - Quick Open (`⌘P`), word count, always-on-top
 - Everything in PRODUCT.md §31 (terminal, Git, plugins, AI, sync, collaboration)
