@@ -56,7 +56,9 @@ Plus: `EditorView` gains the mode state, `TildeApp` the menu command.
      `ViewCommands` via `@FocusedValue`.
   3. **Esc** in Reader returns to the editor: `ReaderTextView` subclass
      overrides `cancelOperation(_:)`.
-- Window subtitle shows “Reader” while active (`navigationSubtitle`).
+- No "Reader" window subtitle: the title-bar toggle's active state and the
+  rendered content already signal the mode, and the title area shows only
+  the file name (PRODUCT.md §17).
 
 ## 3. Rendering rules (EditorTheme continuity)
 

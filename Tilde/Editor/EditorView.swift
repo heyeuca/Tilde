@@ -45,7 +45,9 @@ struct EditorView: View {
             }
         }
         .ignoresSafeArea()
-        .navigationSubtitle(isReaderMode ? "Reader" : "")
+        // No "Reader" subtitle: the title bar toggle (and the rendered
+        // content itself) already convey the mode, and the title area shows
+        // only the file name (PRODUCT.md §17).
         .publishReaderToggle($isReaderMode, enabled: document.isMarkdown)
         .toolbar {
             // A single quiet toggle in the title bar — only for Markdown
