@@ -26,8 +26,8 @@ Everything here is verification and packaging, not features.
 | Full `xcodebuild` + sandbox verification | Xcode device | run docs/VERIFY.md top to bottom |
 | Distribution decision | — | Developer ID + notarization for direct download (App Store optional later; sandbox-ready either way) |
 | GitHub release pipeline | Actions | build → sign → notarize → staple → attach .zip to release |
-| CI on pull requests | Actions | macOS runner: build + tests |
-| Migrate CLI test runners into an XCTest target | Xcode device | keep the scratchpad CLI runners working for the no-Xcode dev loop |
+| CI on pull requests | ✅ DONE | `.github/workflows/ci.yml`: Tests job runs `Tests/run.sh` (171 assertions, 5 suites); Build job runs a real `xcodebuild` Release build (unsigned) and uploads a `Tilde-unsigned` .app artifact. Already caught its first real bug (missing `import Combine` under MemberImportVisibility) |
+| Test suites live in the repo | ✅ DONE | `Tests/` — plain-executable suites + `Tests/run.sh`; no XCTest, so they run with Command Line Tools alone (and on CI). XCTest-target migration no longer needed |
 | Screenshots for README | — | light/dark editor shots; add to repo (public) |
 | Open-source hygiene | — | CONTRIBUTING.md, issue templates. Keep them one screen, in Tilde's voice |
 
