@@ -40,6 +40,8 @@ It is **not** an IDE, a project workspace, a note database, or a Markdown author
 - Open, edit, and save `.txt`, `.md`, and `.markdown` files
 - Opens most UTF-based plain-text files (`.json`, `.yaml`, `.toml`, `.xml`, `.csv`, `.log`, `.env`, and more) as plain text
 - Lightweight Markdown styling that keeps syntax visible while improving readability
+- Reader mode (`⌘⇧R`) — a fully rendered, read-only view of a Markdown document, with tables, local images, and highlighted code blocks; toggle it from the title bar, just like Safari's Reader
+- Quiet syntax highlighting for config files: keys tinted in `.json`, `.yaml`, and `.toml`, everything else left alone
 - Standard editing: undo/redo, cut/copy/paste, drag-and-drop, spell check, Find & Replace
 - Word wrap (on by default) and optional line numbers
 - Light / Dark / System appearance using macOS semantic colors
@@ -67,6 +69,7 @@ Tilde follows macOS conventions.
 | Find Next | `⌘G` |
 | Find Previous | `⌘⇧G` |
 | Find & Replace | `⌥⌘F` |
+| Reader | `⌘⇧R` |
 | Preferences | `⌘,` |
 | Increase Font | `⌘+` |
 | Decrease Font | `⌘-` |

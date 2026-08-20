@@ -31,13 +31,16 @@ Known limit (post-MVP): the initial full styling pass is synchronous (~0.8s at 4
 ```text
 TildeApp (@main)
 ├── DocumentGroup(newDocument:) ─── macOS document system (open/save/autosave/tabs)
-│      └── EditorView (SwiftUI) ─── padding, content width, background
-│             └── TextEditorView (NSViewRepresentable)
-│                    └── NSScrollView + NSTextView (TextKit 2)
-│                           ├── MarkdownStyler ─── restyles edited paragraphs only
-│                           └── EditorTheme ─── fonts & semantic colors
+│      └── EditorView (SwiftUI) ─── settings, Reader state, title-bar toggle
+│             ├── TextEditorView (NSViewRepresentable) ─── the editor
+│             │      └── NSScrollView + EditorTextView (TextKit 2)
+│             │             ├── MarkdownStyler / CodeSyntaxStyler ─── edited paragraphs only
+│             │             └── LineNumberRulerView ─── optional gutter
+│             └── ReaderView (NSViewRepresentable, ⌘⇧R) ─── read-only render
+│                    └── NSScrollView + NSTextView (TextKit 1, for NSTextTable)
+│                           └── MarkdownRenderer + CodeHighlighter
 ├── Settings ─── SettingsView
-└── Commands ─── View menu (Word Wrap, Line Numbers), font size ⌘+/⌘-/⌘0
+└── Commands ─── View menu (Reader, Word Wrap, Line Numbers, font size ⌘+/⌘-/⌘0)
 ```
 
 ### File layout
@@ -45,20 +48,27 @@ TildeApp (@main)
 ```text
 Tilde
 ├── App
-│   └── TildeApp.swift          Scenes + menu commands
+│   └── TildeApp.swift             Scenes + menu commands
 ├── Document
-│   ├── TextDocument.swift      ReferenceFileDocument; owns the text,
-│   │                           tracks encoding + line endings
-│   └── FileEncoding.swift      Encoding detection (BOM → UTF-8 → UTF-16)
+│   ├── TextDocument.swift         ReferenceFileDocument; owns the storage,
+│   │                              tracks encoding + line endings
+│   ├── FileEncoding.swift         Encoding detection (BOM → UTF-16 → UTF-8)
+│   └── LineEnding.swift           Dominant-EOL detect / normalize / restore
 ├── Editor
-│   ├── EditorView.swift        SwiftUI layout shell
-│   ├── TextEditorView.swift    NSTextView wrapper + Coordinator
-│   ├── MarkdownStyler.swift    Attribute-only styling rules
-│   └── EditorTheme.swift       Font/color tokens (semantic colors only)
-├── Settings
-│   ├── AppSettings.swift       @AppStorage keys in one place
-│   └── SettingsView.swift      Single-screen settings
-└── Utilities
+│   ├── EditorView.swift           SwiftUI shell; settings + Reader toggle
+│   ├── TextEditorView.swift       NSTextView wrapper + Coordinator
+│   ├── EditorTextView.swift       NSTextView subclass; unified code-block fill
+│   ├── MarkdownStyler.swift       Attribute-only Markdown styling rules
+│   ├── CodeSyntaxStyler.swift     JSON/YAML/TOML keys-only highlighting
+│   ├── LineNumberRulerView.swift  Adaptive-width gutter (off by default)
+│   └── EditorTheme.swift          Font/color tokens (semantic colors only)
+├── Reader
+│   ├── ReaderView.swift           Read-only rendered Markdown (⌘⇧R)
+│   ├── MarkdownRenderer.swift     PresentationIntent → NSAttributedString
+│   └── CodeHighlighter.swift      Generic lexer for fenced code blocks
+└── Settings
+    ├── AppSettings.swift          @AppStorage keys in one place
+    └── SettingsView.swift         Single-screen settings
 ```
 
 ---
@@ -67,12 +77,19 @@ Tilde
 
 ### TextDocument (`ReferenceFileDocument`)
 
-- Owns `text: String` plus two pieces of metadata captured at load:
+- Owns the `NSTextStorage` directly (the editor renders it in place — the
+  buffer never round-trips through SwiftUI on a keystroke; it becomes a
+  `String` only when a save snapshot is taken), plus metadata captured at load:
   - `encoding: FileEncoding` (default `.utf8` for new documents)
   - `lineEnding: LineEnding` (default `.lf` for new documents)
 - **Read**: detect encoding → decode → detect dominant line ending → normalize buffer to LF.
 - **Write (snapshot)**: restore original line endings → encode with original encoding.
-- Registered content types: `public.plain-text`, `net.daringfireball.markdown`, plus `.txt`/`.md`/`.markdown` extensions. Opens any plain-text UTI via "Open With".
+- Registered content types: `public.plain-text`, `net.daringfireball.markdown`
+  and `io.toml.toml` (both imported UTIs, see Info.plist), plus `public.text`
+  so the broader family (JSON, XML, …) opens via "Open With".
+- Markdown-ness for styling/Reader is derived from the LIVE file URL in
+  `EditorView`, so Save As with a Markdown extension switches modes
+  without reopening.
 
 ### Encoding detection order
 

@@ -344,7 +344,8 @@ The MVP supports the following features.
 - Select All
 - Drag-and-drop text
 - macOS spell checking
-- macOS substitutions
+- macOS substitutions (smart quotes/dashes default OFF — they corrupt code
+  and config files; re-enable per window via Edit ▸ Substitutions)
 - Find
 - Find & Replace
 

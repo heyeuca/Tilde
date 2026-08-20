@@ -2,8 +2,8 @@
 
 Post-MVP Phase 2 feature (see ROADMAP.md). Read-only rendered Markdown as a
 **mode**, not a split view (PRODUCT.md §8). Decisions settled 2026-08-15:
-full v1 scope (tables + local images), return via ⌘⇧R / Esc, mode shown in
-the window subtitle.
+full v1 scope (tables + local images + fenced-code highlighting), entered
+via the title-bar toggle / ⌘⇧R, exited via the same or Esc.
 
 ---
 
@@ -32,8 +32,9 @@ logic → fully testable with the CLI runner on the no-Xcode machine.
 
 ```text
 Tilde/Reader/
+├── ReaderView.swift         NSViewRepresentable (read-only NSTextView)
 ├── MarkdownRenderer.swift   String → NSAttributedString
-└── ReaderView.swift        NSViewRepresentable (read-only NSTextView)
+└── CodeHighlighter.swift    Generic lexer for fenced code blocks
 ```
 
 Plus: `EditorView` gains the mode state, `TildeApp` the menu command.
@@ -73,8 +74,8 @@ different app.
 | Unordered list | inserted `•\t`, hanging indent via tab stop + headIndent |
 | Ordered list | inserted `N.\t`, same indent scheme; ordinals from intent |
 | Nested lists | indent per nesting depth from the intent stack |
-| Blockquote | quoteColor + left indent (v1: no bar; bar is a v2 nicety) |
-| Code block | codeFont + codeBackground, indented block, language ignored |
+| Blockquote | quoteColor + a quiet left bar (NSTextBlock border) |
+| Code block | codeFont + one filled NSTextBlock, tokens tinted by `CodeHighlighter` (comments/strings/numbers/keywords) |
 | Thematic break | hairline via 1-pt NSTextAttachment image spanning content width |
 | Link | linkColor + `.link` attribute (clickable; read-only view makes this safe) |
 | Inline bold/italic/code/strike | same tokens as the editor styler |
@@ -148,6 +149,6 @@ behavior and the whole feature under a full Xcode build (docs/VERIFY.md).
 
 - Scroll position sync between editor and Reader (v2)
 - Live side-by-side or live-typing reader (mode only, §8)
-- Remote images,raw HTML, footnotes, task-list checkboxes (parser doesn't
-  emit them anyway), syntax highlighting inside code blocks
+- Remote images, raw HTML, footnotes, task-list checkboxes (the parser
+  doesn't emit them anyway)
 - Print/PDF export from Reader (could ride on the same attributed string later)
