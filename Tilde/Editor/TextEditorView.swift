@@ -128,6 +128,9 @@ struct TextEditorView: NSViewRepresentable {
 
     static func dismantleNSView(_ scrollView: NSScrollView, coordinator: Coordinator) {
         NotificationCenter.default.removeObserver(coordinator)
+        // The stylers die with the coordinator; don't leave the document's
+        // storage pointing at a deallocated delegate.
+        coordinator.attachedDocument?.textStorage.delegate = nil
     }
 
     func makeCoordinator() -> Coordinator {

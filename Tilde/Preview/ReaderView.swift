@@ -37,6 +37,8 @@ struct ReaderView: NSViewRepresentable {
         textView.isEditable = false
         textView.isSelectable = true
         textView.isRichText = true
+        textView.usesFindBar = true
+        textView.isIncrementalSearchingEnabled = true
         textView.drawsBackground = true
         textView.backgroundColor = .textBackgroundColor
         textView.textContainerInset = NSSize(width: EditorTheme.padding, height: EditorTheme.padding)
@@ -58,6 +60,16 @@ struct ReaderView: NSViewRepresentable {
         context.coordinator.textView = textView
         context.coordinator.render(document: document, fontSize: fontSize)
 
+        // Re-center the capped content column when the window resizes;
+        // updateNSView alone doesn't fire on live resize.
+        textView.postsFrameChangedNotifications = true
+        NotificationCenter.default.addObserver(
+            context.coordinator,
+            selector: #selector(Coordinator.viewFrameDidChange(_:)),
+            name: NSView.frameDidChangeNotification,
+            object: textView
+        )
+
         // Become first responder so Esc (cancelOperation) reaches this view,
         // and re-render now that the window (and its represented URL, used to
         // resolve relative image paths) is available.
@@ -76,9 +88,13 @@ struct ReaderView: NSViewRepresentable {
         context.coordinator.centerContent(in: scrollView)
     }
 
+    static func dismantleNSView(_ scrollView: NSScrollView, coordinator: Coordinator) {
+        NotificationCenter.default.removeObserver(coordinator)
+    }
+
     func makeCoordinator() -> Coordinator { Coordinator() }
 
-    final class Coordinator {
+    final class Coordinator: NSObject {
         weak var textView: NSTextView?
         private var renderedText: String?
         private var renderedSize: CGFloat?
@@ -130,6 +146,11 @@ struct ReaderView: NSViewRepresentable {
             if textView.textContainerInset != inset {
                 textView.textContainerInset = inset
             }
+        }
+
+        @objc func viewFrameDidChange(_ notification: Notification) {
+            guard let scrollView = textView?.enclosingScrollView else { return }
+            centerContent(in: scrollView)
         }
     }
 

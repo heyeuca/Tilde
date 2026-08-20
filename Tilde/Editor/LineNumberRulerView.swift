@@ -69,8 +69,22 @@ final class LineNumberRulerView: NSRulerView {
 
     /// Width fits the document's largest line number: the gutter is snug for a
     /// short file and only widens when the line count grows another digit.
+    /// Newlines are counted with a search loop — splitting the whole string
+    /// into substrings per keystroke would thrash memory on large files.
     private func updateThickness() {
-        let lineCount = (textView?.string as NSString?)?.components(separatedBy: "\n").count ?? 1
+        var lineCount = 1
+        if let string = textView?.string as NSString? {
+            var location = 0
+            while location < string.length {
+                let found = string.range(
+                    of: "\n",
+                    range: NSRange(location: location, length: string.length - location)
+                )
+                guard found.location != NSNotFound else { break }
+                lineCount += 1
+                location = found.location + 1
+            }
+        }
         let digits = max(2, String(max(lineCount, 1)).count)
         let digitWidth = ("8" as NSString).size(withAttributes: [.font: EditorTheme.gutterFont]).width
         let thickness = (leadingPadding + digitWidth * CGFloat(digits) + trailingPadding).rounded(.up)
