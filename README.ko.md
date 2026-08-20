@@ -1,5 +1,7 @@
 # Tilde
 
+[![CI](https://github.com/heyeuca/Tilde/actions/workflows/ci.yml/badge.svg)](https://github.com/heyeuca/Tilde/actions/workflows/ci.yml)
+
 *[English](README.md) · 한국어*
 
 **macOS를 위한 작고 아름다운 텍스트 에디터.**
