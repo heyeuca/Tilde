@@ -5,6 +5,9 @@
 
 import SwiftUI
 import AppKit
+// ObservableObject's synthesized objectWillChange lives in Combine; with
+// MemberImportVisibility enabled the conformance needs the direct import.
+import Combine
 import UniformTypeIdentifiers
 
 extension UTType {
