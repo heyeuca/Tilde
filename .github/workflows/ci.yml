@@ -35,8 +35,12 @@ jobs:
         run: |
           xcodebuild -project Tilde.xcodeproj -scheme Tilde -configuration Release \
             -derivedDataPath build CODE_SIGNING_ALLOWED=NO build
+      - name: Zip app for artifact
+        # ditto preserves the bundle structure and executable bits, which a
+        # bare directory upload loses.
+        run: ditto -c -k --keepParent build/Build/Products/Release/Tilde.app Tilde.app.zip
       - name: Upload app artifact
         uses: actions/upload-artifact@v4
         with:
           name: Tilde-unsigned
-          path: build/Build/Products/Release/Tilde.app
+          path: Tilde.app.zip

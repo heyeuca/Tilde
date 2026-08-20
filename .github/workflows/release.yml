@@ -1,0 +1,145 @@
+name: Release
+
+# Cut a release by pushing a tag:  git tag v1.0.0 && git push origin v1.0.0
+# The workflow builds, signs (Developer ID), notarizes, staples, and attaches
+# the DMG to a GitHub release. `workflow_dispatch` runs the same pipeline
+# without publishing (the DMG is uploaded as an artifact instead) — useful
+# for testing the signing setup.
+#
+# Required repository secrets (see docs/RELEASING.md):
+#   MACOS_CERT_P12       base64 of the Developer ID Application .p12
+#   MACOS_CERT_PASSWORD  password for the .p12
+#   APPLE_TEAM_ID        the Apple Developer team identifier
+#   ASC_KEY_P8           base64 of an App Store Connect API key (.p8)
+#   ASC_KEY_ID           the API key's Key ID
+#   ASC_ISSUER_ID        the API key's Issuer ID
+
+on:
+  push:
+    tags: ['v*']
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    name: Build, sign, notarize, package
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Select newest Xcode
+        run: |
+          XCODE=$(ls -d /Applications/Xcode*.app | sort -V | tail -1)
+          echo "Using $XCODE"
+          sudo xcode-select -s "$XCODE"
+          xcodebuild -version
+
+      - name: Check signing secrets
+        env:
+          MACOS_CERT_P12: ${{ secrets.MACOS_CERT_P12 }}
+          MACOS_CERT_PASSWORD: ${{ secrets.MACOS_CERT_PASSWORD }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+          ASC_KEY_P8: ${{ secrets.ASC_KEY_P8 }}
+          ASC_KEY_ID: ${{ secrets.ASC_KEY_ID }}
+          ASC_ISSUER_ID: ${{ secrets.ASC_ISSUER_ID }}
+        run: |
+          missing=""
+          for v in MACOS_CERT_P12 MACOS_CERT_PASSWORD APPLE_TEAM_ID ASC_KEY_P8 ASC_KEY_ID ASC_ISSUER_ID; do
+            [ -z "${!v}" ] && missing="$missing $v"
+          done
+          if [ -n "$missing" ]; then
+            echo "::error::Missing repository secrets:$missing — see docs/RELEASING.md"
+            exit 1
+          fi
+          echo "all signing secrets present"
+
+      - name: Import Developer ID certificate
+        env:
+          MACOS_CERT_P12: ${{ secrets.MACOS_CERT_P12 }}
+          MACOS_CERT_PASSWORD: ${{ secrets.MACOS_CERT_PASSWORD }}
+        run: |
+          KEYCHAIN_PW="$(uuidgen)"
+          security create-keychain -p "$KEYCHAIN_PW" build.keychain
+          security set-keychain-settings -lut 21600 build.keychain
+          security default-keychain -s build.keychain
+          security unlock-keychain -p "$KEYCHAIN_PW" build.keychain
+          echo "$MACOS_CERT_P12" | base64 --decode > /tmp/cert.p12
+          security import /tmp/cert.p12 -k build.keychain \
+            -P "$MACOS_CERT_PASSWORD" -T /usr/bin/codesign
+          security set-key-partition-list -S apple-tool:,apple: \
+            -s -k "$KEYCHAIN_PW" build.keychain > /dev/null
+          rm /tmp/cert.p12
+          security find-identity -v -p codesigning build.keychain
+
+      - name: Build and sign (Release)
+        env:
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+        run: |
+          xcodebuild -project Tilde.xcodeproj -scheme Tilde -configuration Release \
+            -derivedDataPath build \
+            CODE_SIGN_STYLE=Manual \
+            CODE_SIGN_IDENTITY="Developer ID Application" \
+            DEVELOPMENT_TEAM="$APPLE_TEAM_ID" \
+            build
+
+      - name: Verify app signature
+        run: |
+          APP=build/Build/Products/Release/Tilde.app
+          codesign --verify --deep --strict --verbose=2 "$APP"
+          codesign -d --entitlements - "$APP"
+
+      - name: Package DMG
+        run: ./scripts/make_dmg.sh build/Build/Products/Release/Tilde.app Tilde.dmg
+
+      - name: Sign DMG
+        run: codesign --sign "Developer ID Application" Tilde.dmg
+
+      - name: Notarize
+        env:
+          ASC_KEY_P8: ${{ secrets.ASC_KEY_P8 }}
+          ASC_KEY_ID: ${{ secrets.ASC_KEY_ID }}
+          ASC_ISSUER_ID: ${{ secrets.ASC_ISSUER_ID }}
+        run: |
+          echo "$ASC_KEY_P8" | base64 --decode > /tmp/asc.p8
+          xcrun notarytool submit Tilde.dmg \
+            --key /tmp/asc.p8 --key-id "$ASC_KEY_ID" --issuer "$ASC_ISSUER_ID" \
+            --wait
+          rm /tmp/asc.p8
+
+      - name: Staple and validate
+        run: |
+          xcrun stapler staple Tilde.dmg
+          xcrun stapler validate Tilde.dmg
+          spctl -a -t open --context context:primary-signature -v Tilde.dmg
+
+      - name: Name the DMG
+        id: name
+        run: |
+          if [[ "$GITHUB_REF" == refs/tags/* ]]; then
+            NAME="Tilde-${GITHUB_REF_NAME}.dmg"
+          else
+            NAME="Tilde-dev-$(git rev-parse --short HEAD).dmg"
+          fi
+          mv Tilde.dmg "$NAME"
+          echo "dmg=$NAME" >> "$GITHUB_OUTPUT"
+
+      - name: Create GitHub release
+        if: startsWith(github.ref, 'refs/tags/')
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create "$GITHUB_REF_NAME" "${{ steps.name.outputs.dmg }}" \
+            --title "Tilde $GITHUB_REF_NAME" --generate-notes
+
+      - name: Upload DMG artifact (non-tag runs)
+        if: ${{ !startsWith(github.ref, 'refs/tags/') }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ steps.name.outputs.dmg }}
+          path: ${{ steps.name.outputs.dmg }}
+
+      - name: Clean up keychain
+        if: always()
+        run: security delete-keychain build.keychain || true

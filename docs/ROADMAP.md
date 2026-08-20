@@ -24,8 +24,8 @@ Everything here is verification and packaging, not features.
 | Step | Where | Notes |
 | --- | --- | --- |
 | Full `xcodebuild` + sandbox verification | Xcode device | run docs/VERIFY.md top to bottom |
-| Distribution decision | — | Developer ID + notarization for direct download (App Store optional later; sandbox-ready either way) |
-| GitHub release pipeline | Actions | build → sign → notarize → staple → attach .zip to release |
+| Distribution decision | ✅ DECIDED | Both channels: signed+notarized DMG via GitHub Releases, and the App Store (first submission manual via Xcode Organizer). Sandbox already on for both |
+| GitHub release pipeline | ✅ BUILT (awaiting secrets) | `release.yml`: tag push → build → Developer ID sign → `scripts/make_dmg.sh` → sign DMG → notarize → staple → GitHub release. Blocked only on the 6 repo secrets — setup steps in docs/RELEASING.md. Test first via workflow_dispatch (publishes an artifact, not a release) |
 | CI on pull requests | ✅ DONE | `.github/workflows/ci.yml`: Tests job runs `Tests/run.sh` (171 assertions, 5 suites); Build job runs a real `xcodebuild` Release build (unsigned) and uploads a `Tilde-unsigned` .app artifact. Already caught its first real bug (missing `import Combine` under MemberImportVisibility) |
 | Test suites live in the repo | ✅ DONE | `Tests/` — plain-executable suites + `Tests/run.sh`; no XCTest, so they run with Command Line Tools alone (and on CI). XCTest-target migration no longer needed |
 | Screenshots for README | — | light/dark editor shots; add to repo (public) |
