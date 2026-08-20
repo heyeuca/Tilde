@@ -1,0 +1,42 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  tests:
+    name: Tests
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Select newest Xcode
+        run: |
+          XCODE=$(ls -d /Applications/Xcode*.app | sort -V | tail -1)
+          echo "Using $XCODE"
+          sudo xcode-select -s "$XCODE"
+          swift --version
+      - name: Run test suites
+        run: ./Tests/run.sh
+
+  build:
+    name: Build
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Select newest Xcode
+        run: |
+          XCODE=$(ls -d /Applications/Xcode*.app | sort -V | tail -1)
+          echo "Using $XCODE"
+          sudo xcode-select -s "$XCODE"
+          xcodebuild -version
+      - name: Build (Release, unsigned)
+        run: |
+          xcodebuild -project Tilde.xcodeproj -scheme Tilde -configuration Release \
+            -derivedDataPath build CODE_SIGNING_ALLOWED=NO build
+      - name: Upload app artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: Tilde-unsigned
+          path: build/Build/Products/Release/Tilde.app

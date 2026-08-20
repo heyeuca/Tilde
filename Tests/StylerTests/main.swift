@@ -1,0 +1,261 @@
+// CLI test runner for MarkdownStyler: style an NSTextStorage, assert attributes.
+
+import AppKit
+
+var passed = 0
+var failed = 0
+
+func expect(_ condition: Bool, _ name: String) {
+    if condition { passed += 1; print("  ok  \(name)") }
+    else { failed += 1; print("FAIL  \(name)") }
+}
+
+func styled(_ markdown: String) -> NSTextStorage {
+    let storage = NSTextStorage(string: markdown)
+    let styler = MarkdownStyler()
+    styler.restyleAll(storage)
+    return storage
+}
+
+func font(_ storage: NSTextStorage, at location: Int) -> NSFont? {
+    storage.attribute(.font, at: location, effectiveRange: nil) as? NSFont
+}
+func color(_ storage: NSTextStorage, at location: Int) -> NSColor? {
+    storage.attribute(.foregroundColor, at: location, effectiveRange: nil) as? NSColor
+}
+func background(_ storage: NSTextStorage, at location: Int) -> NSColor? {
+    storage.attribute(.backgroundColor, at: location, effectiveRange: nil) as? NSColor
+}
+func isBold(_ font: NSFont?) -> Bool {
+    font?.fontDescriptor.symbolicTraits.contains(.bold) ?? false
+}
+func isItalic(_ font: NSFont?) -> Bool {
+    font?.fontDescriptor.symbolicTraits.contains(.italic) ?? false
+}
+func isMono(_ font: NSFont?) -> Bool {
+    font?.fontDescriptor.symbolicTraits.contains(.monoSpace) ?? false
+}
+
+// MARK: - Headings
+
+do {
+    let s = styled("# Title\n\nbody\n")
+    expect(font(s, at: 2)?.pointSize == EditorTheme.headingFont(level: 1, size: EditorTheme.defaultFontSize).pointSize, "h1 content is heading-sized")
+    expect(isBold(font(s, at: 2)), "h1 content is bold")
+    expect(color(s, at: 0) == EditorTheme.markerColor, "h1 # marker dimmed")
+    expect(font(s, at: 9)?.pointSize == EditorTheme.defaultFontSize, "body after heading is body-sized")
+    expect(color(s, at: 9) == NSColor.textColor, "body color is textColor")
+}
+
+do {
+    let s = styled("### Third\n")
+    expect(font(s, at: 5)?.pointSize == EditorTheme.headingFont(level: 3, size: EditorTheme.defaultFontSize).pointSize, "h3 sized")
+    expect(color(s, at: 1) == EditorTheme.markerColor, "h3 marker dimmed")
+}
+
+// Not a heading without space
+do {
+    let s = styled("#nospace\n")
+    expect(font(s, at: 1)?.pointSize == EditorTheme.defaultFontSize, "#nospace is not a heading")
+}
+
+// MARK: - Bold / italic / strikethrough
+
+do {
+    let text = "some **bold** words\n"
+    let s = styled(text)
+    let contentAt = (text as NSString).range(of: "bold").location
+    expect(isBold(font(s, at: contentAt)), "**bold** content is bold")
+    expect(color(s, at: contentAt - 1) == EditorTheme.markerColor, "bold opener dimmed")
+    expect(color(s, at: contentAt + 4) == EditorTheme.markerColor, "bold closer dimmed")
+    expect(!isBold(font(s, at: 0)), "text outside bold is regular")
+}
+
+do {
+    let text = "an *italic* word and _under_ too\n"
+    let s = styled(text)
+    let starAt = (text as NSString).range(of: "italic").location
+    let underAt = (text as NSString).range(of: "under").location
+    expect(isItalic(font(s, at: starAt)), "*italic* content is italic")
+    expect(isItalic(font(s, at: underAt)), "_under_ content is italic")
+    expect(color(s, at: starAt - 1) == EditorTheme.markerColor, "italic marker dimmed")
+}
+
+do {
+    let text = "not 2 * 3 * 4 math\n"
+    let s = styled(text)
+    let at = (text as NSString).range(of: "3").location
+    expect(!isItalic(font(s, at: at)), "spaced asterisks are not italic")
+}
+
+do {
+    let text = "a ~~gone~~ word\n"
+    let s = styled(text)
+    let at = (text as NSString).range(of: "gone").location
+    let strike = s.attribute(.strikethroughStyle, at: at, effectiveRange: nil) as? Int
+    expect(strike == NSUnderlineStyle.single.rawValue, "~~strike~~ content struck")
+}
+
+// MARK: - Inline code
+
+do {
+    let text = "use `let x` here\n"
+    let s = styled(text)
+    let at = (text as NSString).range(of: "let x").location
+    expect(isMono(font(s, at: at)), "inline code is monospaced")
+    expect(background(s, at: at) != nil, "inline code has background")
+    expect(color(s, at: at - 1) == EditorTheme.markerColor, "backtick dimmed")
+    // bold inside code span must not style
+    let s2 = styled("`a **b** c`\n")
+    let bAt = 4
+    expect(!isBold(font(s2, at: bAt)), "bold inside code span ignored")
+}
+
+// MARK: - Links
+
+do {
+    let text = "see [docs](https://example.com) now\n"
+    let s = styled(text)
+    let textAt = (text as NSString).range(of: "docs").location
+    let urlAt = (text as NSString).range(of: "https").location
+    expect(color(s, at: textAt) == EditorTheme.linkColor, "link text tinted")
+    expect(color(s, at: urlAt) == EditorTheme.markerColor, "link url dimmed")
+}
+
+// MARK: - Blockquote, list, HR
+
+do {
+    let text = "> quoted words\n"
+    let s = styled(text)
+    expect(color(s, at: 0) == EditorTheme.markerColor, "> marker dimmed")
+    expect(color(s, at: 3) == EditorTheme.quoteColor, "quote content quiet")
+}
+
+do {
+    let text = "- item one\n2. item two\n"
+    let s = styled(text)
+    expect(font(s, at: 0) == EditorTheme.listMarkerFont(size: EditorTheme.defaultFontSize), "bullet emphasized")
+    expect(font(s, at: 11) == EditorTheme.listMarkerFont(size: EditorTheme.defaultFontSize), "ordered marker emphasized")
+    expect(font(s, at: 3)?.pointSize == EditorTheme.defaultFontSize, "list content is body")
+}
+
+do {
+    let s = styled("above\n\n---\n\nbelow\n")
+    let at = ("above\n\n" as NSString).length
+    expect(color(s, at: at) == EditorTheme.markerColor, "--- horizontal rule dimmed")
+}
+
+// MARK: - Fenced code blocks
+
+do {
+    let text = "before\n\n```swift\nlet a = 1\n**not bold**\n```\n\nafter **bold**\n"
+    let s = styled(text)
+    let ns = text as NSString
+    let insideAt = ns.range(of: "let a").location
+    let notBoldAt = ns.range(of: "not bold").location
+    let afterBoldAt = ns.range(of: "bold**", options: .backwards).location
+    expect(isMono(font(s, at: insideAt)), "fence interior monospaced")
+    expect(s.attribute(EditorTheme.codeBlockMarker, at: insideAt, effectiveRange: nil) != nil, "fence interior marked as code block")
+    expect(!isBold(font(s, at: notBoldAt)), "inline rules skipped inside fence")
+    expect(color(s, at: ns.range(of: "```swift").location) == EditorTheme.markerColor, "fence marker line dimmed")
+    expect(isBold(font(s, at: afterBoldAt)), "styling resumes after fence closes")
+    expect(!isMono(font(s, at: ns.range(of: "before").location)), "text before fence untouched")
+}
+
+// Unclosed fence runs to EOF
+do {
+    let text = "start\n```\neverything now code\n"
+    let s = styled(text)
+    let at = (text as NSString).range(of: "everything").location
+    expect(isMono(font(s, at: at)), "unclosed fence styles to EOF")
+}
+
+// MARK: - Incremental restyle via delegate
+
+do {
+    let storage = NSTextStorage(string: "hello world\n")
+    let styler = MarkdownStyler()
+    storage.delegate = styler
+    styler.restyleAll(storage)
+    // Type "**" around a word — delegate should restyle the paragraph.
+    storage.replaceCharacters(in: NSRange(location: 6, length: 0), with: "**")
+    storage.replaceCharacters(in: NSRange(location: 13, length: 0), with: "**")
+    let at = ("hello **wor" as NSString).length - 3
+    expect(isBold(font(storage, at: at)), "delegate-driven restyle applies bold while typing")
+
+    // Opening a fence flips the rest of the document.
+    let storage2 = NSTextStorage(string: "alpha\nbeta\ngamma\n")
+    let styler2 = MarkdownStyler()
+    storage2.delegate = styler2
+    styler2.restyleAll(storage2)
+    storage2.replaceCharacters(in: NSRange(location: 6, length: 0), with: "```\n")
+    let gammaAt = (storage2.string as NSString).range(of: "gamma").location
+    expect(isMono(font(storage2, at: gammaAt)), "typing ``` restyles everything after it")
+}
+
+// MARK: - Fuzz: incremental fence cache must match a full scan
+
+do {
+    // Deterministic PRNG so failures are reproducible.
+    var seed: UInt64 = 0x5eed
+    func rand(_ bound: Int) -> Int {
+        seed = seed &* 6364136223846793005 &+ 1442695040888963407
+        return Int((seed >> 33) % UInt64(bound))
+    }
+
+    let pieces = ["hello ", "**b** ", "`c` ", "# h\n", "```\n", "code\n", "text\n", "> q\n", "- i\n", "\n", "~~s~~ ", "[l](u) "]
+    let storage = NSTextStorage(string: "start\n```\nfence\n```\nend\n")
+    let styler = MarkdownStyler()
+    storage.delegate = styler
+    styler.restyleAll(storage)
+
+    var mismatches = 0
+    for i in 0..<400 {
+        let ns = storage.string as NSString
+        let len = ns.length
+        let kind = rand(3)
+        if kind == 0 || len < 10 {
+            // insert a random piece at a random location
+            let at = rand(len + 1)
+            storage.replaceCharacters(in: NSRange(location: at, length: 0), with: pieces[rand(pieces.count)])
+        } else if kind == 1 {
+            // delete a random small range (can swallow whole fence lines)
+            let at = rand(len)
+            let deleteLength = min(1 + rand(8), len - at)
+            storage.replaceCharacters(in: NSRange(location: at, length: deleteLength), with: "")
+        } else {
+            // replace a random range with a piece (delta can be zero)
+            let at = rand(len)
+            let replaceLength = min(rand(6), len - at)
+            storage.replaceCharacters(in: NSRange(location: at, length: replaceLength), with: pieces[rand(pieces.count)])
+        }
+
+        // After each edit the styler's incremental cache must equal a fresh scan.
+        let current = storage.string as NSString
+        let fresh = MarkdownStyler.scanFenceLines(in: current, within: NSRange(location: 0, length: current.length))
+        let freshStorage = NSTextStorage(string: storage.string)
+        let freshStyler = MarkdownStyler()
+        freshStyler.restyleAll(freshStorage)
+        // Compare rendered attributes at a few sampled positions.
+        for _ in 0..<8 where current.length > 0 {
+            let at = rand(current.length)
+            let a = storage.attributes(at: at, effectiveRange: nil)
+            let b = freshStorage.attributes(at: at, effectiveRange: nil)
+            let aFont = a[.font] as? NSFont
+            let bFont = b[.font] as? NSFont
+            let aColor = a[.foregroundColor] as? NSColor
+            let bColor = b[.foregroundColor] as? NSColor
+            if aFont != bFont || aColor != bColor {
+                if mismatches == 0 {
+                    print("mismatch at step \(i), offset \(at): \(String(describing: aFont)) vs \(String(describing: bFont)), \(String(describing: aColor)) vs \(String(describing: bColor))")
+                    print("fresh fences: \(fresh)")
+                }
+                mismatches += 1
+            }
+        }
+    }
+    expect(mismatches == 0, "fuzz: 400 random edits — incremental styling matches full restyle (\(mismatches) mismatches)")
+}
+
+print("\n\(passed) passed, \(failed) failed")
+exit(failed == 0 ? 0 : 1)
