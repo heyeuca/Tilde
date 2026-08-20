@@ -31,7 +31,7 @@ logic → fully testable with the CLI runner on the no-Xcode machine.
 ### Files
 
 ```text
-Tilde/Preview/
+Tilde/Reader/
 ├── MarkdownRenderer.swift   String → NSAttributedString
 └── ReaderView.swift        NSViewRepresentable (read-only NSTextView)
 ```
