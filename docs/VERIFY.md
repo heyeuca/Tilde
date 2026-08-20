@@ -32,6 +32,15 @@ runners, and the unsigned smoke bundle).
 
 ## Document behavior
 
+- [ ] Save As an untitled document with Format "Markdown Document" →
+      typography, Markdown styling, and the title-bar Reader toggle appear
+      immediately (no reopen). Same live switch for `.json`/`.yaml`/`.toml`
+      key highlighting via Save As. (Not automatable on the dev machine —
+      the save panel's format picker needs a human.)
+- [ ] Launching the app without a document opens a blank Untitled window,
+      not the open panel (`NSShowAppCentricOpenPanelInsteadOfUntitledFile`
+      registered false)
+
 - [ ] Autosave: edit, wait, force-quit → relaunch restores content
 - [ ] Versions: File → Revert To shows history and restores
 - [ ] Window tabs (Window → Merge All Windows) behave

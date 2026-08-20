@@ -22,12 +22,20 @@ struct EditorView: View {
 
     private var clampedFontSize: CGFloat { fontSize.clamped(to: AppSettings.fontSizeRange) }
 
+    /// Markdown-ness follows the LIVE file URL, not just the type the
+    /// document was opened with, so saving an untitled document as `.md`
+    /// switches typography, styling, and the Reader toggle immediately.
+    private var isMarkdown: Bool {
+        document.isMarkdown || TextDocument.isMarkdownExtension(fileURL?.pathExtension ?? "")
+    }
+
     var body: some View {
         ZStack {
             // The editor stays mounted underneath so caret, scroll, and IME
             // state survive the round trip into Reader and back.
             TextEditorView(
                 document: document,
+                isMarkdown: isMarkdown,
                 fontSize: clampedFontSize,
                 wordWrap: wordWrap,
                 showLineNumbers: lineNumbers,
@@ -48,11 +56,11 @@ struct EditorView: View {
         // No "Reader" subtitle: the title bar toggle (and the rendered
         // content itself) already convey the mode, and the title area shows
         // only the file name (PRODUCT.md §17).
-        .publishReaderToggle($isReaderMode, enabled: document.isMarkdown)
+        .publishReaderToggle($isReaderMode, enabled: isMarkdown)
         .toolbar {
             // A single quiet toggle in the title bar — only for Markdown
             // documents, so plain-text and config windows stay chrome-free.
-            if document.isMarkdown {
+            if isMarkdown {
                 ToolbarItem(placement: .primaryAction) {
                     Toggle(isOn: $isReaderMode) {
                         Label("Reader", systemImage: "book")
@@ -82,15 +90,11 @@ extension FocusedValues {
 
 private extension View {
     /// Publishes the Reader toggle only for Markdown documents, so the
-    /// command is disabled for plain text. Markdown-ness is fixed for a
-    /// document's lifetime, so the branch does not thrash view identity.
-    @ViewBuilder
+    /// command is disabled for plain text. Publishing nil (instead of an
+    /// `if` branch) keeps view identity stable when markdown-ness changes
+    /// at Save As time.
     func publishReaderToggle(_ binding: Binding<Bool>, enabled: Bool) -> some View {
-        if enabled {
-            focusedSceneValue(\.readerMode, binding)
-        } else {
-            self
-        }
+        focusedSceneValue(\.readerMode, enabled ? binding : nil)
     }
 }
 

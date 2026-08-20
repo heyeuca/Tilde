@@ -8,6 +8,11 @@ import SwiftUI
 @main
 struct TildeApp: App {
     init() {
+        // Launching without a document creates a blank one (PRODUCT.md §10)
+        // instead of the open panel document apps show by default.
+        UserDefaults.standard.register(defaults: [
+            "NSShowAppCentricOpenPanelInsteadOfUntitledFile": false,
+        ])
         AppearanceSetting.applyAtLaunch()
     }
 

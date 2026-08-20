@@ -15,6 +15,9 @@ import AppKit
 struct TextEditorView: NSViewRepresentable {
     var document: TextDocument
 
+    /// Markdown-ness is derived from the live file URL by `EditorView`, so
+    /// it can change at Save As time.
+    var isMarkdown: Bool
     var fontSize: CGFloat
     var wordWrap: Bool
     var showLineNumbers: Bool
@@ -24,6 +27,7 @@ struct TextEditorView: NSViewRepresentable {
 
     /// The settings state last pushed into AppKit, for cheap diffing.
     struct AppliedSettings: Equatable {
+        var isMarkdown: Bool
         var fontSize: CGFloat
         var wordWrap: Bool
         var showLineNumbers: Bool
@@ -34,7 +38,7 @@ struct TextEditorView: NSViewRepresentable {
     /// JSON/YAML highlighting is chosen by extension, and never for a
     /// Markdown document.
     private var codeLanguage: CodeSyntaxStyler.Language? {
-        guard !document.isMarkdown else { return nil }
+        guard !isMarkdown else { return nil }
         switch fileURL?.pathExtension.lowercased() {
         case "json": return .json
         case "yaml", "yml": return .yaml
@@ -45,10 +49,11 @@ struct TextEditorView: NSViewRepresentable {
 
     private var desiredSettings: AppliedSettings {
         AppliedSettings(
+            isMarkdown: isMarkdown,
             fontSize: fontSize,
             wordWrap: wordWrap,
             showLineNumbers: showLineNumbers,
-            stylerActive: document.isMarkdown && markdownStyling,
+            stylerActive: isMarkdown && markdownStyling,
             codeLanguage: codeLanguage
         )
     }
@@ -169,7 +174,7 @@ struct TextEditorView: NSViewRepresentable {
         // MARK: - Settings
 
         func apply(_ settings: AppliedSettings, to textView: NSTextView, in scrollView: NSScrollView) {
-            let monospaced = !(attachedDocument?.isMarkdown ?? false)
+            let monospaced = !settings.isMarkdown
 
             // Pick the highlighter for this document: Markdown styling, code
             // highlighting by extension, or plain (Markdown styler in a
@@ -248,6 +253,8 @@ struct TextEditorView: NSViewRepresentable {
             activeHighlighter?.restyleAll(document.textStorage)
         }
 
+        private var isMarkdown: Bool { applied?.isMarkdown ?? false }
+
         /// Markdown documents keep their content no wider than
         /// `EditorTheme.maxContentWidth`, centered; plain text uses the full width.
         func updateContentInsets(of textView: NSTextView) {
@@ -255,7 +262,7 @@ struct TextEditorView: NSViewRepresentable {
             // the text view only needs a small gap beside the numbers.
             let basePadding = applied?.showLineNumbers == true ? EditorTheme.gutterTextInset : EditorTheme.padding
             var horizontal = basePadding
-            if attachedDocument?.isMarkdown == true, applied?.wordWrap ?? true {
+            if isMarkdown, applied?.wordWrap ?? true {
                 let excess = textView.frame.width - EditorTheme.maxContentWidth
                 horizontal = max(basePadding, excess / 2)
             }

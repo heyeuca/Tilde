@@ -28,9 +28,16 @@ final class TextDocument: ReferenceFileDocument {
     private(set) var encoding: FileEncoding
     private(set) var lineEnding: LineEnding
 
-    /// Whether this document gets Markdown typography and styling.
-    /// New documents are plain text until saved with a Markdown extension.
+    /// Whether this document was OPENED as Markdown. The editor combines
+    /// this with the live file URL (see `EditorView`) so a document saved
+    /// with a Markdown extension switches modes without reopening.
     private(set) var isMarkdown: Bool
+
+    /// File extensions treated as Markdown (mirrors Info.plist's imported
+    /// `net.daringfireball.markdown` declaration).
+    static func isMarkdownExtension(_ ext: String) -> Bool {
+        ["md", "markdown", "mdown"].contains(ext.lowercased())
+    }
 
     /// `.plainText` first: new documents default to `.txt` in the save panel.
     /// `.text` admits the broader family (JSON, YAML, XML, …) via Open With —
