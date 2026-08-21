@@ -32,10 +32,9 @@ func drawIcon(size: Int) -> NSBitmapImageRep {
     )!
     gradient.draw(in: plate, angle: 90)
 
-    // Hairline edge so the plate reads on white backgrounds.
-    NSColor(calibratedWhite: 0, alpha: 0.08).setStroke()
-    plate.lineWidth = 4
-    plate.stroke()
+    // No edge treatment: real-world icons sit on the translucent Dock and
+    // blurred backdrops, and the subtle gradient keeps the plate readable.
+    // (Apple bakes a soft shadow instead; strokes are used by no one.)
 
     // The ~ glyph, drawn as text and optically centered.
     let font = NSFont.systemFont(ofSize: 860, weight: .medium)
