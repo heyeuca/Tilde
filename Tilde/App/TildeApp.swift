@@ -62,7 +62,7 @@ struct ViewCommands: Commands {
             Divider()
 
             Button("Increase Font Size") {
-                fontSize = min(fontSize + 1, AppSettings.fontSizeRange.upperBound)
+                fontSize = AppSettings.increasedFontSize(fontSize)
             }
             .keyboardShortcut("+", modifiers: .command)
 

@@ -59,6 +59,19 @@ struct EditorView: View {
             }
         }
         .ignoresSafeArea()
+        // ⌘= catcher: .keyboardShortcut("+") only fires on the shifted key
+        // (⌘⇧=), while Safari/TextEdit/Terminal all accept plain ⌘= for
+        // zoom-in. An invisible button supplies the second key equivalent.
+        .background {
+            Button("") {
+                fontSize = AppSettings.increasedFontSize(fontSize)
+            }
+            .keyboardShortcut("=", modifiers: .command)
+            .buttonStyle(.plain)
+            .opacity(0)
+            .frame(width: 0, height: 0)
+            .accessibilityHidden(true)
+        }
         // No "Reader" subtitle: the title bar toggle (and the rendered
         // content itself) already convey the mode, and the title area shows
         // only the file name (PRODUCT.md §17).

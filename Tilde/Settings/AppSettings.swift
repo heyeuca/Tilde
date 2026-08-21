@@ -22,6 +22,13 @@ enum AppSettings {
     static let defaultWordWrap = true
     static let defaultLineNumbers = false
     static let defaultMarkdownStyling = true
+
+    /// One zoom step up, capped — shared by the View-menu command (⌘⇧=)
+    /// and the window-level ⌘= catcher so the two key equivalents of the
+    /// same command can never drift apart.
+    static func increasedFontSize(_ current: Double) -> Double {
+        min(current + 1, fontSizeRange.upperBound)
+    }
 }
 
 /// Light / Dark / System, applied app-wide via `NSApplication.appearance`.
