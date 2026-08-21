@@ -258,18 +258,24 @@ struct TextEditorView: NSViewRepresentable {
         /// Markdown documents keep their content no wider than
         /// `EditorTheme.maxContentWidth`, centered; plain text uses the full width.
         func updateContentInsets(of textView: NSTextView) {
-            // With the gutter shown, it supplies the left reading margin, so
-            // the text view only needs a small gap beside the numbers.
-            let basePadding = applied?.showLineNumbers == true ? EditorTheme.gutterTextInset : EditorTheme.padding
-            var horizontal = basePadding
+            // With the gutter shown it supplies the LEFT reading margin, so
+            // the text only needs a small gap beside the numbers — but the
+            // RIGHT margin must keep the full padding. textContainerInset is
+            // symmetric, so use the average of the two targets and shift the
+            // container left by the difference (EditorTextView overrides
+            // textContainerOrigin for this).
+            var left = applied?.showLineNumbers == true ? EditorTheme.gutterTextInset : EditorTheme.padding
+            var right = EditorTheme.padding
             if isMarkdown, applied?.wordWrap ?? true {
-                let excess = textView.frame.width - EditorTheme.maxContentWidth
-                horizontal = max(basePadding, excess / 2)
+                let half = (textView.frame.width - EditorTheme.maxContentWidth) / 2
+                left = max(left, half)
+                right = max(right, half)
             }
-            let inset = NSSize(width: horizontal, height: EditorTheme.padding)
+            let inset = NSSize(width: (left + right) / 2, height: EditorTheme.padding)
             if textView.textContainerInset != inset {
                 textView.textContainerInset = inset
             }
+            (textView as? EditorTextView)?.textOriginShiftX = inset.width - left
         }
 
         @objc func viewFrameDidChange(_ notification: Notification) {
