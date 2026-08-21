@@ -132,6 +132,10 @@ enum EditorTheme {
         NSFontManager.shared.convert(bodyFont(monospaced: false, size: size), toHaveTrait: .italicFontMask)
     }
 
+    static func boldItalicBodyFont(size: CGFloat) -> NSFont {
+        NSFontManager.shared.convert(boldBodyFont(size: size), toHaveTrait: .italicFontMask)
+    }
+
     static func listMarkerFont(size: CGFloat) -> NSFont {
         .systemFont(ofSize: size, weight: .semibold)
     }

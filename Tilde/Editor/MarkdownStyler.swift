@@ -316,8 +316,12 @@ final class MarkdownStyler: NSObject, SyntaxHighlighting {
     // MARK: - Inline rules
 
     private static let codeSpanPattern = try! NSRegularExpression(pattern: "`([^`\\n]+)`")
+    /// Two markers = bold, three = bold italic. One pattern handles both
+    /// (greedy `{2,3}` tries the triple first) so `***both***` can't
+    /// half-match as bold with a stray bright asterisk on each side, and
+    /// the styler pays no extra regex pass for it.
     private static let boldPattern = try! NSRegularExpression(
-        pattern: "(\\*\\*|__)(?!\\s)([^\\n]+?)(?<=\\S)\\1"
+        pattern: "(\\*{2,3}|_{2,3})(?!\\s)([^\\n]+?)(?<=\\S)\\1"
     )
     private static let strikePattern = try! NSRegularExpression(
         pattern: "~~(?!\\s)([^~\\n]+?)(?<=\\S)~~"
@@ -370,7 +374,10 @@ final class MarkdownStyler: NSObject, SyntaxHighlighting {
         Self.boldPattern.enumerateMatches(in: lineText, range: range) { match, _, _ in
             guard let match, isFree(match.range) else { return }
             let content = match.range(at: 2)
-            storage.addAttribute(.font, value: EditorTheme.boldBodyFont(size: fontSize), range: absolute(content))
+            let font = match.range(at: 1).length == 3
+                ? EditorTheme.boldItalicBodyFont(size: fontSize)
+                : EditorTheme.boldBodyFont(size: fontSize)
+            storage.addAttribute(.font, value: font, range: absolute(content))
             dimMarkers(of: match, except: content)
             consumed.append(match.range)
         }

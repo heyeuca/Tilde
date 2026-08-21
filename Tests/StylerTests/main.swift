@@ -88,6 +88,23 @@ do {
     expect(!isItalic(font(s, at: at)), "spaced asterisks are not italic")
 }
 
+// Triple markers: bold+italic content, all six markers dimmed, no strays.
+do {
+    let text = "a ***both*** b and ___under___ c\n"
+    let s = styled(text)
+    let starAt = (text as NSString).range(of: "both").location
+    let underAt = (text as NSString).range(of: "under").location
+    expect(isBold(font(s, at: starAt)) && isItalic(font(s, at: starAt)), "***both*** is bold italic")
+    expect(isBold(font(s, at: underAt)) && isItalic(font(s, at: underAt)), "___under___ is bold italic")
+    for offset in 1...3 {
+        expect(color(s, at: starAt - offset) == EditorTheme.markerColor, "*** opener char \(offset) dimmed")
+        expect(color(s, at: starAt + 3 + offset) == EditorTheme.markerColor, "*** closer char \(offset) dimmed")
+    }
+    let afterClose = (text as NSString).range(of: " b and").location
+    expect(color(s, at: afterClose) == NSColor.textColor, "no stray marker after ***both***")
+    expect(!isBold(font(s, at: afterClose)), "text after ***both*** is regular")
+}
+
 do {
     let text = "a ~~gone~~ word\n"
     let s = styled(text)
