@@ -6,6 +6,13 @@
 import SwiftUI
 import AppKit
 
+/// Lets `EditorView` ask the editor for its current reading position
+/// (fraction of characters above the viewport top) without holding a
+/// reference to the AppKit text view.
+final class EditorScrollBridge {
+    var readFraction: () -> CGFloat = { 0 }
+}
+
 /// Wraps an AppKit `NSTextView` (TextKit 2) for SwiftUI.
 ///
 /// Undo, Find, spell checking, IME, and drag & drop all come from the
@@ -24,6 +31,8 @@ struct TextEditorView: NSViewRepresentable {
     var markdownStyling: Bool
     /// The document's file URL, used to pick a code highlighter by extension.
     var fileURL: URL?
+    /// Reader-entry position bridge; optional so previews/tests can omit it.
+    var scrollBridge: EditorScrollBridge? = nil
 
     /// The settings state last pushed into AppKit, for cheap diffing.
     struct AppliedSettings: Equatable {
@@ -155,6 +164,7 @@ struct TextEditorView: NSViewRepresentable {
         private weak var activeHighlighter: (NSObject & SyntaxHighlighting)?
         var applied: AppliedSettings?
         private(set) weak var attachedDocument: TextDocument?
+        private(set) weak var textView: NSTextView?
 
         init(parent: TextEditorView) {
             self.parent = parent
@@ -166,9 +176,54 @@ struct TextEditorView: NSViewRepresentable {
         /// the whole buffer exactly once.
         func attach(_ document: TextDocument, to textView: NSTextView, in scrollView: NSScrollView, settings: AppliedSettings) {
             attachedDocument = document
+            self.textView = textView
             textView.textContentStorage?.textStorage = document.textStorage
+            parent.scrollBridge?.readFraction = { [weak self] in
+                self?.currentReadingFraction() ?? 0
+            }
             apply(settings, to: textView, in: scrollView)
             restyleAll()
+        }
+
+        /// Fraction (0…1) of the document's characters above the top of the
+        /// editor's viewport — used to open Reader at the same place.
+        func currentReadingFraction() -> CGFloat {
+            guard
+                let textView,
+                let length = attachedDocument?.textStorage.length, length > 0
+            else { return 0 }
+
+            let visible = textView.visibleRect
+            let containerPoint = CGPoint(x: 0, y: visible.minY - textView.textContainerInset.height)
+            guard containerPoint.y > 0 else { return 0 }
+
+            if let layoutManager = textView.textLayoutManager,
+               let contentManager = layoutManager.textContentManager,
+               let fragment = layoutManager.textLayoutFragment(for: containerPoint) {
+                var offset = contentManager.offset(
+                    from: contentManager.documentRange.location,
+                    to: fragment.rangeInElement.location
+                )
+                // Fragments span whole paragraphs, so interpolate by y
+                // within the fragment: a document dominated by one long
+                // soft-wrapped paragraph should map to its middle, not
+                // snap to its start.
+                let frame = fragment.layoutFragmentFrame
+                if frame.height > 0 {
+                    let fragmentLength = contentManager.offset(
+                        from: fragment.rangeInElement.location,
+                        to: fragment.rangeInElement.endLocation
+                    )
+                    let within = max(0, min(1, (containerPoint.y - frame.minY) / frame.height))
+                    offset += Int(CGFloat(fragmentLength) * within)
+                }
+                return max(0, min(1, CGFloat(offset) / CGFloat(length)))
+            }
+
+            // Fallback: fraction of the scrollable range.
+            let scrollable = textView.frame.height - visible.height
+            guard scrollable > 0 else { return 0 }
+            return max(0, min(1, visible.minY / scrollable))
         }
 
         // MARK: - Settings

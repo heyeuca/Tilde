@@ -65,19 +65,31 @@ do {
     expect(colorAt(code, "'", "sql") == nil || true, "sql: sanity")
 }
 
-// Unknown language: still strings/comments/numbers, no keyword coloring
+// Unknown or untagged language: no highlighting at all — prose in a bare
+// fence must not sprout C-like comment/string colors.
 do {
-    let code = "banana // note\nvalue = \"hi\" 7\n"
-    expect(colorAt(code, "note", "cobol") == EditorTheme.codeCommentColor, "unknown: default line comment")
-    expect(colorAt(code, "\"hi\"", "cobol") == EditorTheme.codeStringColor, "unknown: default string")
-    expect(colorAt(code, "7", "cobol") == EditorTheme.codeNumberColor, "unknown: default number")
-    expect(colorAt(code, "banana", "cobol") == nil, "unknown: no keyword coloring")
+    let code = "banana // note\nvalue = \"hi\" 7 don't\n"
+    expect(hl.spans(for: code, language: "cobol").isEmpty, "unknown language: no spans")
+    expect(hl.spans(for: code, language: nil).isEmpty, "nil language: no spans")
+    expect(hl.spans(for: code, language: "").isEmpty, "empty language: no spans")
+    expect(hl.spans(for: "see https://example.com\n", language: "text").isEmpty, "```text prose: no spans")
 }
 
-// No language: c-like default
+// Fence info strings: only the first word names the language.
 do {
-    let code = "x = 5 // c-like default\n"
-    expect(colorAt(code, "c-like default", nil) == EditorTheme.codeCommentColor, "nil language: c-like comment")
+    let code = "func greet() {}\n"
+    var sawKeyword = false
+    for span in hl.spans(for: code, language: "swift copy") where span.color == EditorTheme.codeKeywordColor {
+        sawKeyword = true
+    }
+    expect(sawKeyword, "info string 'swift copy' still highlights swift")
+}
+
+// Named keyword-less languages keep quiet partial highlighting.
+do {
+    expect(colorAt("$x = 1; # note\n", "note", "perl") == EditorTheme.codeCommentColor, "perl: hash comment")
+    expect(colorAt("-- note\nprint(1)\n", "note", "lua") == EditorTheme.codeCommentColor, "lua: -- comment")
+    expect(colorAt("echo \"hi\"; // note\n", "note", "php") == EditorTheme.codeCommentColor, "php: // comment")
 }
 
 // Robustness

@@ -19,8 +19,11 @@ struct CodeHighlighter {
         let color: NSColor
     }
 
-    /// Per-language lexing rules. Unknown languages fall back to a C-like
-    /// default (which still gets strings/comments/numbers, just no keywords).
+    /// Per-language lexing rules. Untagged or unknown languages get NO
+    /// highlighting at all: prose in a bare ``` fence must not sprout
+    /// C-like comment/string colors ("don't" greening the rest of the
+    /// line, URLs dimming at the //). Default-colored mono text is the
+    /// quiet baseline; the header's principle applies at the language level.
     struct Syntax {
         var lineComments: [String] = ["//"]
         var blockComments: [(open: String, close: String)] = [("/*", "*/")]
@@ -32,7 +35,7 @@ struct CodeHighlighter {
     }
 
     func spans(for code: String, language: String?) -> [Span] {
-        let syntax = Self.syntax(for: language)
+        guard let syntax = Self.syntax(for: language) else { return [] }
         let s = code as NSString
         let n = s.length
         guard n > 0 else { return [] }
@@ -146,12 +149,13 @@ struct CodeHighlighter {
 
     // MARK: - Language table
 
-    private static func syntax(for language: String?) -> Syntax {
-        guard let language = language?.lowercased(), !language.isEmpty else { return cLike }
-        return table[language] ?? cLike
+    private static func syntax(for language: String?) -> Syntax? {
+        // Apple's parser passes the VERBATIM fence info string as the
+        // language hint ("swift copy", "python title=x"); only the first
+        // word names the language.
+        guard let first = language?.split(whereSeparator: \.isWhitespace).first else { return nil }
+        return table[first.lowercased()]
     }
-
-    private static let cLike = Syntax()
 
     private static func kw(_ list: String) -> Set<String> {
         Set(list.split(separator: " ").map(String.init))
@@ -234,7 +238,16 @@ struct CodeHighlighter {
         for k in ["html", "xml", "svg"] { t[k] = markup }
 
         let hashConfig = Syntax(lineComments: hashLine, blockComments: [], stringDelims: [0x22, 0x27], keywords: kw("true false null yes no"))
-        for k in ["yaml", "yml", "toml", "ini"] { t[k] = hashConfig }
+        for k in ["yaml", "yml", "toml", "ini", "makefile", "dockerfile"] { t[k] = hashConfig }
+
+        // Keyword-less entries: strings/comments/numbers only, so these
+        // named languages keep quiet partial highlighting instead of
+        // dropping to plain like unknown/prose fences.
+        t["php"] = Syntax(lineComments: ["//", "#"], stringDelims: [0x22, 0x27])
+        let hashScript = Syntax(lineComments: hashLine, blockComments: [], stringDelims: [0x22, 0x27])
+        for k in ["perl", "pl", "r"] { t[k] = hashScript }
+        t["lua"] = Syntax(lineComments: ["--"], blockComments: [("--[[", "]]")], stringDelims: [0x22, 0x27])
+        t["dart"] = js
 
         return t
     }()

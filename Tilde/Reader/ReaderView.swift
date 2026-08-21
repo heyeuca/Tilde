@@ -14,6 +14,11 @@ import AppKit
 struct ReaderView: NSViewRepresentable {
     var document: TextDocument
     var fontSize: CGFloat
+    /// Asks the editor for its reading position (fraction of characters
+    /// above the viewport top) so Reader opens at the same place instead of
+    /// the top. Read at makeNSView time — the editor is still mounted
+    /// underneath — so ANY entry path gets position restore for free.
+    var entryFraction: () -> CGFloat = { 0 }
     /// Called when the user presses Esc to leave Reader.
     var onExit: () -> Void
 
@@ -24,6 +29,10 @@ struct ReaderView: NSViewRepresentable {
         // the editor stays on TextKit 2.
         let textStorage = NSTextStorage()
         let layoutManager = NSLayoutManager()
+        // Read-only view: non-contiguous layout lets the entry-position
+        // scroll estimate the height above its target instead of laying out
+        // the whole prefix on the main thread.
+        layoutManager.allowsNonContiguousLayout = true
         textStorage.addLayoutManager(layoutManager)
         // Width tracks the view; height is unbounded so the text view grows to
         // fit all content and the scroll view can reach the bottom.
@@ -58,6 +67,11 @@ struct ReaderView: NSViewRepresentable {
         scrollView.documentView = textView
 
         context.coordinator.textView = textView
+        // Capture the editor's position now; restore it only in the deferred
+        // render below — at this point the view has no window and a zero
+        // frame, so a scroll here would be computed against bogus geometry
+        // and thrown away one runloop later anyway.
+        let entry = entryFraction()
         context.coordinator.render(document: document, fontSize: fontSize)
 
         // Re-center the capped content column when the window resizes;
@@ -77,7 +91,7 @@ struct ReaderView: NSViewRepresentable {
         // own Esc still closes the search before this exits Reader.
         DispatchQueue.main.async { [weak textView] in
             textView?.window?.makeFirstResponder(textView)
-            context.coordinator.render(document: document, fontSize: fontSize)
+            context.coordinator.render(document: document, fontSize: fontSize, restoringFraction: entry)
         }
         return scrollView
     }
@@ -111,7 +125,7 @@ struct ReaderView: NSViewRepresentable {
             render(document: document, fontSize: fontSize)
         }
 
-        func render(document: TextDocument, fontSize: CGFloat) {
+        func render(document: TextDocument, fontSize: CGFloat, restoringFraction: CGFloat? = nil) {
             guard let textView else { return }
             let text = document.textStorage.string
             let baseURL = textView.window?.representedURL?.deletingLastPathComponent()
@@ -123,6 +137,7 @@ struct ReaderView: NSViewRepresentable {
 
             if text.utf8.count <= Self.syncThreshold {
                 textView.textStorage?.setAttributedString(renderer.render(text))
+                if let restoringFraction { scroll(toCharacterFraction: restoringFraction) }
                 return
             }
 
@@ -133,8 +148,32 @@ struct ReaderView: NSViewRepresentable {
                 DispatchQueue.main.async { [weak self] in
                     guard let self, self.generation == token, let textView = self.textView else { return }
                     textView.textStorage?.setAttributedString(rendered)
+                    if let restoringFraction { self.scroll(toCharacterFraction: restoringFraction) }
                 }
             }
+        }
+
+        /// Scrolls so the character at `fraction` of the rendered text sits at
+        /// the top of the viewport — an approximate but cheap mapping of the
+        /// editor's position (source and rendered lengths differ only by the
+        /// dissolved markers).
+        private func scroll(toCharacterFraction fraction: CGFloat) {
+            guard
+                fraction > 0,
+                let textView,
+                let layoutManager = textView.layoutManager
+            else { return }
+            let length = (textView.string as NSString).length
+            guard length > 0 else { return }
+
+            let target = min(length - 1, Int(CGFloat(length) * fraction))
+            // Lay out only the target's own range: with non-contiguous
+            // layout TextKit estimates the height above it, so a large
+            // document doesn't pay a full main-thread layout pass here.
+            layoutManager.ensureLayout(forCharacterRange: NSRange(location: target, length: 1))
+            let glyphIndex = layoutManager.glyphIndexForCharacter(at: target)
+            let lineRect = layoutManager.lineFragmentRect(forGlyphAt: glyphIndex, effectiveRange: nil)
+            textView.scroll(NSPoint(x: 0, y: lineRect.minY + textView.textContainerInset.height))
         }
 
         /// Markdown content is capped and centered like the editor.

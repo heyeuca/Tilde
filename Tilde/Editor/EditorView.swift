@@ -20,6 +20,10 @@ struct EditorView: View {
     /// opens in the editor.
     @State private var isReaderMode = false
 
+    /// Lets ReaderView ask the editor for its current reading position when
+    /// it mounts, so the rendered view opens at the same place.
+    @State private var scrollBridge = EditorScrollBridge()
+
     private var clampedFontSize: CGFloat { fontSize.clamped(to: AppSettings.fontSizeRange) }
 
     /// Markdown-ness follows the LIVE file URL, not just the type the
@@ -40,7 +44,8 @@ struct EditorView: View {
                 wordWrap: wordWrap,
                 showLineNumbers: lineNumbers,
                 markdownStyling: markdownStyling,
-                fileURL: fileURL
+                fileURL: fileURL,
+                scrollBridge: scrollBridge
             )
             .opacity(isReaderMode ? 0 : 1)
 
@@ -48,6 +53,7 @@ struct EditorView: View {
                 ReaderView(
                     document: document,
                     fontSize: clampedFontSize,
+                    entryFraction: { scrollBridge.readFraction() },
                     onExit: { isReaderMode = false }
                 )
             }
