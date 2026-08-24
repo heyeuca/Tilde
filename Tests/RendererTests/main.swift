@@ -105,7 +105,7 @@ do {
 do {
     let s = render("> quoted line\n")
     let at = offset(of: "quoted", in: s)
-    expect(color(s, at: at) == EditorTheme.quoteColor, "quote text uses quote color")
+    expect(color(s, at: at) == NSColor.textColor, "quote text keeps full ink")
     let ps = paragraphStyle(s, at: at)
     expect(ps?.textBlocks.isEmpty == false, "quote has a bar text block")
     expect(!s.string.contains(">"), "quote marker removed")

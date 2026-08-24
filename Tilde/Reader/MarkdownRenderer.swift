@@ -182,7 +182,7 @@ struct MarkdownRenderer {
 
             let cellStart = result.length
             for run in cell.runs {
-                result.append(inlineAttributed(run, baseFont: baseFont, quoted: false))
+                result.append(inlineAttributed(run, baseFont: baseFont))
             }
             result.append(NSAttributedString(string: "\n"))
             result.addAttribute(.paragraphStyle,
@@ -260,14 +260,14 @@ struct MarkdownRenderer {
             let marker = ordered ? "\(listOrdinal ?? 1).\t" : "•\t"
             result.append(NSAttributedString(string: marker, attributes: [
                 .font: EditorTheme.listMarkerFont(size: fontSize),
-                .foregroundColor: isQuote ? EditorTheme.quoteColor : NSColor.textColor,
+                .foregroundColor: NSColor.textColor,
             ]))
             markerLength = (marker as NSString).length
         }
 
         // Body runs with inline styling.
         for run in block.runs {
-            result.append(inlineAttributed(run, baseFont: baseFont, quoted: isQuote))
+            result.append(inlineAttributed(run, baseFont: baseFont))
         }
         result.append(NSAttributedString(string: "\n"))
 
@@ -377,8 +377,7 @@ struct MarkdownRenderer {
 
     private func inlineAttributed(
         _ run: (text: String, inline: InlinePresentationIntent?, link: URL?, image: URL?),
-        baseFont: NSFont,
-        quoted: Bool
+        baseFont: NSFont
     ) -> NSAttributedString {
         if let image = run.image {
             return imageAttributed(altText: run.text, url: image)
@@ -402,7 +401,7 @@ struct MarkdownRenderer {
             attributes[.foregroundColor] = EditorTheme.linkColor
             attributes[.link] = link
         } else {
-            attributes[.foregroundColor] = quoted ? EditorTheme.quoteColor : NSColor.textColor
+            attributes[.foregroundColor] = NSColor.textColor
         }
 
         return NSAttributedString(string: run.text, attributes: attributes)

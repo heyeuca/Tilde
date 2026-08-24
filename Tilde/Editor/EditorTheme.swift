@@ -82,12 +82,18 @@ enum EditorTheme {
     static var quoteColor: NSColor { .secondaryLabelColor }
 
     /// The vertical bar drawn at the left edge of a rendered blockquote.
-    static var quoteBarColor: NSColor { .quaternaryLabelColor }
+    static var quoteBarColor: NSColor { .tertiaryLabelColor }
 
     static var linkColor: NSColor { .linkColor }
 
-    /// Subtle fill behind inline code and code blocks.
-    static var codeBackgroundColor: NSColor { .quaternarySystemFill }
+    /// Subtle fill behind inline code and code blocks. In dark mode the
+    /// quaternary fill all but vanishes against the window background, so
+    /// the dark variant steps one level up.
+    static let codeBackgroundColor: NSColor = NSColor(name: nil) { appearance in
+        appearance.bestMatch(from: [.aqua, .darkAqua]) == .darkAqua
+            ? .tertiarySystemFill
+            : .quaternarySystemFill
+    }
 
     /// Marks a character range as belonging to a fenced code block so the
     /// editor can draw one unified background behind it (a per-character
@@ -109,11 +115,22 @@ enum EditorTheme {
 
     /// A restrained, appearance-adaptive palette for code inside rendered
     /// Markdown fences. Comments recede; keyword/string/number get one quiet
-    /// accent each.
-    static var codeKeywordColor: NSColor { .systemPurple }
-    static var codeStringColor: NSColor { .systemGreen }
-    static var codeNumberColor: NSColor { .systemBlue }
+    /// accent each — system colors pulled toward the text ink so they read
+    /// as tinted ink on the grayscale page, not raw candy.
+    static let codeKeywordColor: NSColor = inkBlended(.systemPurple, 0.3)
+    static let codeStringColor: NSColor = inkBlended(.systemGreen, 0.45)
+    static let codeNumberColor: NSColor = inkBlended(.systemBlue, 0.3)
     static var codeCommentColor: NSColor { .tertiaryLabelColor }
+
+    private static func inkBlended(_ base: NSColor, _ fraction: CGFloat) -> NSColor {
+        NSColor(name: nil) { appearance in
+            var resolved = base
+            appearance.performAsCurrentDrawingAppearance {
+                resolved = base.blended(withFraction: fraction, of: .textColor) ?? base
+            }
+            return resolved
+        }
+    }
 
     /// Code spans/blocks sit a point smaller so the monospaced face
     /// doesn't look oversized next to SF Pro.
@@ -123,7 +140,7 @@ enum EditorTheme {
 
     static func headingFont(level: Int, size: CGFloat) -> NSFont {
         switch level {
-        case 1: .systemFont(ofSize: (size * 1.6).rounded(), weight: .bold)
+        case 1: .systemFont(ofSize: (size * 1.7).rounded(), weight: .bold)
         case 2: .systemFont(ofSize: (size * 1.45).rounded(), weight: .bold)
         case 3: .systemFont(ofSize: (size * 1.25).rounded(), weight: .bold)
         default: .systemFont(ofSize: (size * 1.05).rounded(), weight: .semibold)
