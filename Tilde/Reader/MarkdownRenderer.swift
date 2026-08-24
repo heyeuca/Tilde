@@ -29,7 +29,7 @@ struct MarkdownRenderer {
     private let indentUnit: CGFloat = 22
 
     /// Rendered content width (matches the editor's centered column).
-    private var contentWidth: CGFloat { EditorTheme.maxContentWidth - 2 * EditorTheme.padding }
+    private var contentWidth: CGFloat { EditorTheme.maxContentWidth(for: fontSize) - 2 * EditorTheme.padding }
 
     // MARK: - Entry point
 
@@ -311,7 +311,7 @@ struct MarkdownRenderer {
     }
 
     private func appendThematicBreak(to result: NSMutableAttributedString) {
-        let width = EditorTheme.maxContentWidth - 2 * EditorTheme.padding
+        let width = contentWidth
         let image = NSImage(size: NSSize(width: width, height: 1))
         image.lockFocus()
         NSColor.separatorColor.setFill()

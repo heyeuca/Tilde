@@ -179,7 +179,8 @@ struct ReaderView: NSViewRepresentable {
         /// Markdown content is capped and centered like the editor.
         func centerContent(in scrollView: NSScrollView) {
             guard let textView else { return }
-            let excess = scrollView.contentSize.width - EditorTheme.maxContentWidth
+            let cap = EditorTheme.maxContentWidth(for: renderedSize ?? EditorTheme.defaultFontSize)
+            let excess = scrollView.contentSize.width - cap
             let horizontal = max(EditorTheme.padding, excess / 2)
             let inset = NSSize(width: horizontal, height: EditorTheme.padding)
             if textView.textContainerInset != inset {

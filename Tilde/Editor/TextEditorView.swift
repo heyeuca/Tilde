@@ -322,7 +322,8 @@ struct TextEditorView: NSViewRepresentable {
             var left = applied?.showLineNumbers == true ? EditorTheme.gutterTextInset : EditorTheme.padding
             var right = EditorTheme.padding
             if isMarkdown, applied?.wordWrap ?? true {
-                let half = (textView.frame.width - EditorTheme.maxContentWidth) / 2
+                let cap = EditorTheme.maxContentWidth(for: applied?.fontSize ?? EditorTheme.defaultFontSize)
+                let half = (textView.frame.width - cap) / 2
                 left = max(left, half)
                 right = max(right, half)
             }

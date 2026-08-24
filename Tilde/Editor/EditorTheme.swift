@@ -20,8 +20,14 @@ enum EditorTheme {
     static let padding: CGFloat = 28
 
     /// Markdown documents cap their content width so lines stay comfortable
-    /// to read in a wide window. Plain text uses the full window width.
-    static let maxContentWidth: CGFloat = 820
+    /// to read in a wide window. The measure is defined in type, not pixels
+    /// — about 50 em of text (~100 Latin characters) plus the side padding
+    /// — so it breathes like a book page and grows with ⌘+/⌘-. At the
+    /// default 14 pt the column is ~756 px, close to Obsidian's 700 px.
+    /// Plain text uses the full window width.
+    static func maxContentWidth(for size: CGFloat) -> CGFloat {
+        (size * 50).rounded() + 2 * padding
+    }
 
     /// Body font: proportional (SF Pro) for Markdown, monospaced (SF Mono)
     /// for plain text.
