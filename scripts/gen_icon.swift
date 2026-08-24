@@ -23,11 +23,14 @@ let plateRect = NSRect(x: 100, y: 100, width: 824, height: 824)
 let plateRadius: CGFloat = 185
 
 struct Treatment {
-    var glyphWeight: NSFont.Weight
+    /// Font-rendered glyph (nil = hand-drawn wave, see drawIcon).
+    var glyphWeight: NSFont.Weight?
     var glyphSize: CGFloat
     var plateTop: NSColor
     var plateBottom: NSColor
 }
+
+let inkColor = NSColor(calibratedRed: 0.11, green: 0.11, blue: 0.12, alpha: 1)
 
 let standard = Treatment(
     glyphWeight: .medium,
@@ -36,12 +39,14 @@ let standard = Treatment(
     plateBottom: NSColor(calibratedRed: 0.925, green: 0.922, blue: 0.913, alpha: 1)
 )
 
-// Small sizes: the standard tilde's ink is only ~427x131 on the 1024 grid —
-// a ~7x2 px smear at 16 px. Draw it heavier and wider (~76% of the plate)
-// on a slightly darker plate so the waveform survives antialiasing.
+// Small sizes: any font-rendered tilde collapses into a bar at 16 px — the
+// ink is only ~2 px tall and antialiasing eats the waveform. These sizes
+// draw the wave by hand instead (a stroked centerline with round caps, in
+// drawIcon), on a slightly darker plate, so crest and trough survive the
+// pixel grid and the smallest incarnation keeps the icon's personality.
 let small = Treatment(
-    glyphWeight: .heavy,
-    glyphSize: 1240,
+    glyphWeight: nil,
+    glyphSize: 0,
     plateTop: NSColor(calibratedRed: 0.965, green: 0.963, blue: 0.958, alpha: 1),
     plateBottom: NSColor(calibratedRed: 0.895, green: 0.892, blue: 0.882, alpha: 1)
 )
@@ -80,19 +85,38 @@ func drawIcon(pixels: Int, treatment: Treatment) -> NSBitmapImageRep {
     let gradient = NSGradient(starting: treatment.plateBottom, ending: treatment.plateTop)!
     gradient.draw(in: plate, angle: 90)
 
-    // The ~ glyph, drawn as text and optically centered.
-    let font = NSFont.systemFont(ofSize: treatment.glyphSize, weight: treatment.glyphWeight)
-    let glyph = NSAttributedString(string: "~", attributes: [
-        .font: font,
-        .foregroundColor: NSColor(calibratedRed: 0.11, green: 0.11, blue: 0.12, alpha: 1),
-    ])
-    // Use the tight glyph bounds, not the font's line box, to center.
-    let line = CTLineCreateWithAttributedString(glyph)
-    let bounds = CTLineGetImageBounds(line, cg)
-    let x = plateRect.midX - bounds.midX
-    let y = plateRect.midY - bounds.midY
-    cg.textPosition = CGPoint(x: x, y: y)
-    CTLineDraw(line, cg)
+    if let weight = treatment.glyphWeight {
+        // The ~ glyph, drawn as text and optically centered.
+        let font = NSFont.systemFont(ofSize: treatment.glyphSize, weight: weight)
+        let glyph = NSAttributedString(string: "~", attributes: [
+            .font: font,
+            .foregroundColor: inkColor,
+        ])
+        // Use the tight glyph bounds, not the font's line box, to center.
+        let line = CTLineCreateWithAttributedString(glyph)
+        let bounds = CTLineGetImageBounds(line, cg)
+        let x = plateRect.midX - bounds.midX
+        let y = plateRect.midY - bounds.midY
+        cg.textPosition = CGPoint(x: x, y: y)
+        CTLineDraw(line, cg)
+    } else {
+        // Hand-drawn wave: a single cubic centerline (crest left, trough
+        // right, tips flicking outward like the type glyph) stroked with
+        // round caps. Tuned so that at 16 px the stroke is ~2.3 px and the
+        // crest-to-trough swing ~3 px — a wave, not a bandage.
+        let waveWidth: CGFloat = 660
+        let path = NSBezierPath()
+        path.move(to: NSPoint(x: plateRect.midX - waveWidth / 2, y: plateRect.midY - 66))
+        path.curve(
+            to: NSPoint(x: plateRect.midX + waveWidth / 2, y: plateRect.midY + 66),
+            controlPoint1: NSPoint(x: plateRect.midX - waveWidth / 6, y: plateRect.midY + 240),
+            controlPoint2: NSPoint(x: plateRect.midX + waveWidth / 6, y: plateRect.midY - 240)
+        )
+        path.lineWidth = 138
+        path.lineCapStyle = .round
+        inkColor.set()
+        path.stroke()
+    }
 
     NSGraphicsContext.restoreGraphicsState()
     return rep
