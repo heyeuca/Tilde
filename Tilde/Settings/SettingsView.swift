@@ -36,12 +36,12 @@ struct SettingsView: View {
             }
 
             Section("Markdown") {
-                Toggle("Enhanced Markdown Styling", isOn: $markdownStyling)
+                Toggle("Markdown Styling", isOn: $markdownStyling)
             }
         }
         .formStyle(.grouped)
-        .frame(width: 380)
-        .fixedSize()
+        .scrollDisabled(true)
+        .frame(width: 380, height: 384)
         .onChange(of: appearance) { _, newValue in
             newValue.apply()
         }

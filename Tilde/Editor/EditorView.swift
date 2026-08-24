@@ -81,11 +81,12 @@ struct EditorView: View {
             // documents, so plain-text and config windows stay chrome-free.
             if isMarkdown {
                 ToolbarItem(placement: .primaryAction) {
-                    Toggle(isOn: $isReaderMode) {
-                        Label("Reader", systemImage: "book")
+                    Button {
+                        isReaderMode.toggle()
+                    } label: {
+                        Label("Reader", systemImage: isReaderMode ? "book.fill" : "book")
                     }
-                    .toggleStyle(.button)
-                    .help("Reader (⌘⇧R)")
+                    .help(isReaderMode ? "Hide Reader (⌘⇧R)" : "Reader (⌘⇧R)")
                 }
             }
         }
