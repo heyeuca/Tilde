@@ -76,7 +76,7 @@ struct MarkdownRenderer {
 
         let result = NSMutableAttributedString()
         var index = 0
-        var afterTable = false
+        var afterTextBlock = false
         while index < blocks.count {
             let block = blocks[index]
             if let tableID = tableIdentity(of: block.intent) {
@@ -86,18 +86,51 @@ struct MarkdownRenderer {
                     tableBlocks.append(blocks[index])
                     index += 1
                 }
+                if afterTextBlock { appendBlockSpacer(to: result) }
                 appendTable(tableBlocks, to: result, isFirst: result.length == 0)
-                afterTable = true
+                afterTextBlock = true
                 continue
             }
-            // A text block's paragraphSpacing is swallowed by the table
-            // layout, so the gap below a table is added as leading space on
-            // the block that follows it.
-            append(block, to: result, isFirst: index == 0, extraSpacingBefore: afterTable)
-            afterTable = false
+            // NSTextBlock layout (tables, quotes, code) swallows the
+            // paragraph's own paragraphSpacing, so the gap below any such
+            // block is added as leading space on the block that follows it —
+            // the page keeps one uniform vertical beat. Between two text
+            // blocks even that leading space is absorbed INSIDE the second
+            // block, so those adjacencies get a real spacer paragraph.
+            if afterTextBlock, usesTextBlock(block) { appendBlockSpacer(to: result) }
+            append(block, to: result, isFirst: index == 0, extraSpacingBefore: afterTextBlock)
+            afterTextBlock = usesTextBlock(block)
             index += 1
         }
         return result
+    }
+
+    /// An invisible paragraph exactly one beat tall, placed between two
+    /// text-block paragraphs (quote/code/table), where paragraph spacing —
+    /// leading or trailing — is absorbed by the block layout.
+    private func appendBlockSpacer(to result: NSMutableAttributedString) {
+        let beat = EditorTheme.lineSpacing(for: EditorTheme.bodyFont(monospaced: false, size: fontSize))
+        let style = NSMutableParagraphStyle()
+        style.minimumLineHeight = beat
+        style.maximumLineHeight = beat
+        result.append(NSAttributedString(string: "\n", attributes: [
+            .font: NSFont.systemFont(ofSize: 1),
+            .paragraphStyle: style,
+        ]))
+    }
+
+    /// True for blocks laid out with an NSTextBlock (top-level quotes and
+    /// code listings), whose trailing paragraphSpacing TextKit swallows.
+    private func usesTextBlock(_ block: Block) -> Bool {
+        let components = block.intent?.components ?? []
+        if case .codeBlock = components.first?.kind { return true }
+        let isQuote = components.contains { if case .blockQuote = $0.kind { return true }; return false }
+        let inList = components.contains {
+            if case .orderedList = $0.kind { return true }
+            if case .unorderedList = $0.kind { return true }
+            return false
+        }
+        return isQuote && !inList
     }
 
     // MARK: - Tables
@@ -245,7 +278,7 @@ struct MarkdownRenderer {
         if !isFirst {
             if headerLevel > 0 {
                 style.paragraphSpacingBefore = EditorTheme.lineSpacing(for: baseFont) * 1.5
-            } else if extraSpacingBefore {
+            } else if extraSpacingBefore, !(isQuote && listDepth == 0) {
                 style.paragraphSpacingBefore = EditorTheme.lineSpacing(for: baseFont)
             }
         }
@@ -294,21 +327,26 @@ struct MarkdownRenderer {
 
         result.append(NSAttributedString(string: "\n"))
 
-        // One filled block behind the whole listing (a text block, like a
-        // table cell) instead of a ragged per-line background.
+        // One block behind the whole listing (a text block, like a table
+        // cell) instead of a ragged per-line background. The fill itself is
+        // NOT the text block's square background: the range is tagged with
+        // codeBlockMarker and the Reader's text view draws one rounded band.
         let codeBlock = NSTextBlock()
         codeBlock.setValue(100, type: .percentageValueType, for: .width)
-        codeBlock.backgroundColor = EditorTheme.codeBackgroundColor
-        codeBlock.setWidth(10, type: .absoluteValueType, for: .padding)
+        codeBlock.setWidth(Self.codeBlockPadding, type: .absoluteValueType, for: .padding)
 
         let style = NSMutableParagraphStyle()
         style.textBlocks = [codeBlock]
         style.lineSpacing = EditorTheme.lineSpacing(for: EditorTheme.codeFont(size: fontSize))
         style.paragraphSpacing = EditorTheme.lineSpacing(for: EditorTheme.bodyFont(monospaced: false, size: fontSize))
-        result.addAttribute(.paragraphStyle,
-                            value: style,
-                            range: NSRange(location: blockStart, length: result.length - blockStart))
+        let blockRange = NSRange(location: blockStart, length: result.length - blockStart)
+        result.addAttribute(.paragraphStyle, value: style, range: blockRange)
+        result.addAttribute(EditorTheme.codeBlockMarker, value: true, range: blockRange)
     }
+
+    /// Inner padding of the code listing's text block; the Reader text view
+    /// outsets its rounded fill by the same amount to cover it.
+    static let codeBlockPadding: CGFloat = 10
 
     private func appendThematicBreak(to result: NSMutableAttributedString) {
         let width = contentWidth

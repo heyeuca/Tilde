@@ -111,13 +111,39 @@ do {
     expect(!s.string.contains(">"), "quote marker removed")
 }
 
+// Blocks following a quote or code listing get leading spacing (their own
+// paragraphSpacing is swallowed by the NSTextBlock layout).
+do {
+    let s = render("> quoted\n\nafter quote\n\n```\ncode\n```\n\nafter code\n")
+    let afterQuote = paragraphStyle(s, at: offset(of: "after quote", in: s))
+    expect((afterQuote?.paragraphSpacingBefore ?? 0) > 0, "paragraph after quote gets leading spacing")
+    let afterCode = paragraphStyle(s, at: offset(of: "after code", in: s))
+    expect((afterCode?.paragraphSpacingBefore ?? 0) > 0, "paragraph after code gets leading spacing")
+    let inCode = offset(of: "code", in: s)
+    expect(s.attribute(EditorTheme.codeBlockMarker, at: inCode, effectiveRange: nil) != nil,
+           "code listing tagged for the rounded band")
+}
+
+// Two adjacent text blocks (quote→code, code→quote) get a real spacer
+// paragraph — leading spacing is absorbed INSIDE a text block, so the beat
+// needs an actual (invisible, one-beat-tall) paragraph between them.
+do {
+    let s = render("> quoted\n\n```\ncode\n```\n\n> second quote\n")
+    expect(s.string.contains("quoted\n\ncode"), "spacer between quote and code")
+    expect(s.string.contains("code\n\nsecond"), "spacer between code and quote")
+    // Normal paragraph flow stays spacer-free.
+    let p = render("one\n\ntwo\n")
+    expect(!p.string.contains("one\n\ntwo"), "no spacer between plain paragraphs")
+}
+
 // MARK: - Code block
 
 do {
     let s = render("intro\n\n```swift\nlet x = 1\nprint(x)\n```\n\noutro\n")
     let codeAt = offset(of: "let x", in: s)
     expect(isMono(font(s, at: codeAt)), "code block is monospaced")
-    expect(paragraphStyle(s, at: codeAt)?.textBlocks.first?.backgroundColor != nil, "code block has a filled background block")
+    expect(paragraphStyle(s, at: codeAt)?.textBlocks.first?.backgroundColor == nil, "code block fill left to the view")
+    expect(s.attribute(EditorTheme.codeBlockMarker, at: codeAt, effectiveRange: nil) != nil, "code block tagged for the rounded band")
     expect(s.string.contains("let x = 1\nprint(x)"), "code block preserves internal newlines")
     expect(!s.string.contains("```"), "code fence markers removed")
     expect(font(s, at: offset(of: "outro", in: s))?.pointSize == 14, "body resumes after code block")

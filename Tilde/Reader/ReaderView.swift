@@ -194,9 +194,53 @@ struct ReaderView: NSViewRepresentable {
         }
     }
 
-    /// NSTextView that leaves Reader on Esc.
+    /// NSTextView that leaves Reader on Esc, and paints one rounded band
+    /// behind each code listing. The renderer tags listings with
+    /// `codeBlockMarker` instead of giving their NSTextBlock a square
+    /// background fill, so the code's "room" keeps the editor's exact
+    /// geometry — same color, same 5pt corners — across ⌘⇧R.
     private final class ExitingTextView: NSTextView {
         var onExit: (() -> Void)?
         override func cancelOperation(_ sender: Any?) { onExit?() }
+
+        override func drawBackground(in rect: NSRect) {
+            super.drawBackground(in: rect)
+            guard
+                let layoutManager,
+                let storage = textStorage,
+                storage.length > 0
+            else { return }
+
+            EditorTheme.codeBackgroundColor.setFill()
+            let origin = textContainerOrigin
+            let pad = MarkdownRenderer.codeBlockPadding
+            storage.enumerateAttribute(
+                EditorTheme.codeBlockMarker,
+                in: NSRange(location: 0, length: storage.length)
+            ) { value, range, _ in
+                guard value != nil else { return }
+                let glyphRange = layoutManager.glyphRange(forCharacterRange: range, actualCharacterRange: nil)
+                var union = CGRect.null
+                layoutManager.enumerateLineFragments(forGlyphRange: glyphRange) { fragment, _, _, _, _ in
+                    union = union.union(fragment)
+                }
+                guard !union.isNull else { return }
+                if let style = storage.attribute(.paragraphStyle, at: range.location, effectiveRange: nil) as? NSParagraphStyle {
+                    union.size.height = max(0, union.height - style.lineSpacing)
+                }
+                let band = NSRect(
+                    x: union.minX + origin.x - pad,
+                    y: union.minY + origin.y - pad,
+                    width: union.width + pad * 2,
+                    height: union.height + pad * 2
+                )
+                guard band.intersects(rect) else { return }
+                NSBezierPath(
+                    roundedRect: band,
+                    xRadius: EditorTheme.codeCornerRadius,
+                    yRadius: EditorTheme.codeCornerRadius
+                ).fill()
+            }
+        }
     }
 }
