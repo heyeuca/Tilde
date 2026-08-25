@@ -128,6 +128,12 @@ No encoding conversion UI. What comes in goes back out unchanged.
 
 Colors: semantic only (`.labelColor`, `.textBackgroundColor`, …). Light/Dark/System follows the system with zero custom theming.
 
+### CJK and monospace
+
+SF Mono has no CJK glyphs; Korean/Japanese/Chinese characters fall back to proportional system fonts (Apple SD Gothic Neo, Hiragino Sans, PingFang), breaking column alignment in plain-text mode. This is an industry-wide limitation shared by every major text editor.
+
+If CJK column alignment becomes a requirement, candidate replacement: **Sarasa Gothic** (Iosevka + Source Han Sans, proper 2:1 duospacing across JP/KR/ZH). Would require bundling or user installation.
+
 ---
 
 ## 5. Markdown Styling
