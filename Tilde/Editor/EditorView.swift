@@ -84,7 +84,16 @@ struct EditorView: View {
                     Button {
                         isReaderMode.toggle()
                     } label: {
-                        Label("Reader", systemImage: isReaderMode ? "book.fill" : "book")
+                        Label {
+                            Text("Reader")
+                        } icon: {
+                            Image(systemName: "book")
+                                .symbolVariant(isReaderMode ? .fill : .none)
+                                // Keep both symbol variants in the same toolbar
+                                // slot so their intrinsic bounds cannot move
+                                // the Reader control's optical center.
+                                .frame(width: 18, height: 18)
+                        }
                     }
                     .help(isReaderMode ? "Hide Reader (⌘⇧R)" : "Reader (⌘⇧R)")
                 }
