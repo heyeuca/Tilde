@@ -31,15 +31,34 @@ final class TextDocument: ReferenceFileDocument {
     private(set) var encoding: FileEncoding
     private(set) var lineEnding: LineEnding
 
+    /// True when the file's bytes could not be decoded exactly (invalid
+    /// UTF-8, BOM-less UTF-16 CJK, legacy encodings): the in-memory text
+    /// contains substitution characters, so writing it back would corrupt
+    /// the original. Such documents open read-only and refuse to save.
+    private(set) var isLossy: Bool
+
     /// Whether this document was OPENED as Markdown. The editor combines
-    /// this with the live file URL (see `EditorView`) so a document saved
-    /// with a Markdown extension switches modes without reopening.
+    /// this with the live file URL (see `isMarkdown(openedAsMarkdown:fileURL:)`)
+    /// so a document saved with a different extension switches modes
+    /// without reopening.
     private(set) var isMarkdown: Bool
 
     /// File extensions treated as Markdown (mirrors Info.plist's imported
     /// `net.daringfireball.markdown` declaration).
     static func isMarkdownExtension(_ ext: String) -> Bool {
         ["md", "markdown", "mdown"].contains(ext.lowercased())
+    }
+
+    /// Markdown-ness for a document as it exists NOW: the live extension
+    /// wins, so Save As from `.md` to `.txt` (or back) switches typography,
+    /// styling, code highlighting, and the Reader command immediately. The
+    /// open-time type is only the fallback for extension-less files and
+    /// untitled documents.
+    static func isMarkdown(openedAsMarkdown: Bool, fileURL: URL?) -> Bool {
+        if let ext = fileURL?.pathExtension, !ext.isEmpty {
+            return isMarkdownExtension(ext)
+        }
+        return openedAsMarkdown
     }
 
     /// `.plainText` first: new documents default to `.txt` in the save panel.
@@ -52,6 +71,7 @@ final class TextDocument: ReferenceFileDocument {
         textStorage = NSTextStorage()
         encoding = .default
         lineEnding = .lf
+        isLossy = false
         isMarkdown = false
     }
 
@@ -64,6 +84,7 @@ final class TextDocument: ReferenceFileDocument {
         textStorage = NSTextStorage(string: normalized.text)
         encoding = decoded.encoding
         lineEnding = normalized.lineEnding
+        isLossy = decoded.isLossy
         isMarkdown = configuration.contentType.conforms(to: .markdown)
     }
 
@@ -72,7 +93,27 @@ final class TextDocument: ReferenceFileDocument {
     }
 
     func fileWrapper(snapshot: String, configuration: WriteConfiguration) throws -> FileWrapper {
-        let data = encoding.encode(lineEnding.restore(in: snapshot))
+        // A lossily decoded buffer contains substitution characters where
+        // the original had bytes Tilde couldn't decode; writing it out
+        // would destroy those bytes irrecoverably. The editor is read-only
+        // for these documents — this guard is the backstop for any other
+        // save path (autosave, Versions, scripted saves).
+        guard !isLossy else {
+            throw CocoaError(.fileWriteInapplicableStringEncoding, userInfo: [
+                NSLocalizedDescriptionKey: String(
+                    localized: "This file uses an encoding Tilde can't fully read, so saving would corrupt it."
+                ),
+                NSLocalizedRecoverySuggestionErrorKey: String(
+                    localized: "The document is shown read-only to protect the original file. Copy text out of it, or convert the file to UTF-8 with another tool."
+                ),
+            ])
+        }
+        // The buffer should already be LF-only (normalized at load, and the
+        // editor normalizes paste/drop), but restore() rewrites every `\n`
+        // — a stray literal `\r\n` would corrupt into `\r\r\n` on a CRLF
+        // document. Re-normalize as a cheap belt-and-braces pass.
+        let normalized = LineEnding.normalizeToLF(snapshot).text
+        let data = encoding.encode(lineEnding.restore(in: normalized))
         return FileWrapper(regularFileWithContents: data)
     }
 }

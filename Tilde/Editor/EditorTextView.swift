@@ -31,6 +31,39 @@ final class EditorTextView: NSTextView {
         return origin
     }
 
+    /// The buffer's invariant is LF-only line endings (the document
+    /// normalizes at load and restores the original style at save — a
+    /// literal `\r\n` surviving in the buffer would corrupt into `\r\r\n`
+    /// on a CRLF save, and the line-number gutter counts `\n` alone).
+    /// Paste and drag are the two ways foreign line endings get in; both
+    /// funnel through this read, so normalize here.
+    override func readSelection(from pboard: NSPasteboard, type: NSPasteboard.PasteboardType) -> Bool {
+        if type == .string,
+           let raw = pboard.string(forType: .string),
+           raw.contains("\r") {
+            insertText(LineEnding.normalizeToLF(raw).text, replacementRange: selectedRange())
+            return true
+        }
+        return super.readSelection(from: pboard, type: type)
+    }
+
+    /// A freshly created document window parks first-responder status on the
+    /// window itself, so typing into a new (or newly opened) document went
+    /// nowhere until the user clicked. Claim focus as soon as the editor
+    /// lands in a window — deferred one runloop so window setup finishes
+    /// first, and only when the window still holds focus, so a real
+    /// responder (the find bar's field editor, a sheet) is never robbed.
+    override func viewDidMoveToWindow() {
+        super.viewDidMoveToWindow()
+        guard window != nil else { return }
+        DispatchQueue.main.async { [weak self] in
+            guard let self, let window = self.window else { return }
+            if window.firstResponder === window {
+                window.makeFirstResponder(self)
+            }
+        }
+    }
+
     override func drawBackground(in rect: NSRect) {
         super.drawBackground(in: rect)
 

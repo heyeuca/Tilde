@@ -33,7 +33,12 @@ status=0
 build_and_run DocumentTests \
     Tilde/Document/FileEncoding.swift \
     Tilde/Document/LineEnding.swift \
+    Tilde/Document/TextDocument.swift \
     Tests/DocumentTests/main.swift || status=1
+
+build_and_run LineIndexTests \
+    Tilde/Editor/LineIndex.swift \
+    Tests/LineIndexTests/main.swift || status=1
 
 build_and_run StylerTests \
     Tilde/Editor/EditorTheme.swift \

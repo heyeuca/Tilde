@@ -46,6 +46,13 @@ runners, and the unsigned smoke bundle).
 - [ ] Window tabs (Window → Merge All Windows) behave
 - [ ] Dirty-close on an untitled document prompts to save;
       existing documents close silently (autosave-in-place)
+- [ ] Lossy-encoding file (e.g. EUC-KR, or BOM-less UTF-16 Korean): opens
+      read-only with the notice bar, typing does nothing, and no save path
+      (⌘S, autosave, Versions) writes the file (verified via CLI tests +
+      smoke bundle on the dev machine; re-check under the sandbox)
+- [ ] Focus: ⌘N then type immediately — text lands in the body; Reader →
+      Esc then type — same (regression-tested by `Tests/ui_smoke.sh` on
+      the dev machine)
 
 ## Performance (targets from PRODUCT.md §28)
 
@@ -55,9 +62,14 @@ runners, and the unsigned smoke bundle).
 
 ## Markdown Reader (⌘⇧R)
 
-- [ ] ⌘⇧R toggles Reader; Esc returns to editor; subtitle shows "Reader"
+- [ ] ⌘⇧R toggles Reader; Esc returns to editor (and focus returns to the
+      editor — typing works without a click)
 - [ ] Command disabled for plain-text (.txt) documents
 - [ ] Headings, lists, quotes, code blocks, HR, links, inline styles render
+- [ ] Relative links: clicking `[x](other.md)` opens the file in Tilde
+      **under the sandbox** (expected to work only for already-readable
+      paths — on denial the click just beeps); `#fragment` links scroll to
+      the matching heading
 - [ ] Tables render with borders and column alignment
 - [ ] **Sandbox image behavior** (unverifiable on the unsandboxed smoke
       bundle): a sibling `./image.png` is blocked by the sandbox and should

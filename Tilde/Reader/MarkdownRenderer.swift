@@ -22,8 +22,28 @@ struct MarkdownRenderer {
     var fontSize: CGFloat = EditorTheme.defaultFontSize
 
     /// Directory of the document being previewed, for resolving relative
-    /// image paths. Remote images are never fetched regardless.
+    /// image AND link paths. Remote images are never fetched regardless.
     var baseURL: URL?
+
+    /// Marks each rendered heading with its GitHub-style anchor slug, so a
+    /// clicked `#fragment` link can jump to the matching heading.
+    static let headingAnchorKey = NSAttributedString.Key("tildeHeadingAnchor")
+
+    /// GitHub-style anchor slug for a heading: lowercased, spaces become
+    /// hyphens, and everything but letters, digits, `-`, and `_` is
+    /// dropped. Applied to link fragments too, so `#Section Title` and
+    /// `#section-title` both reach the same heading.
+    static func anchorSlug(for text: String) -> String {
+        var slug = String.UnicodeScalarView()
+        for scalar in text.lowercased().unicodeScalars {
+            if CharacterSet.alphanumerics.contains(scalar) || scalar == "_" || scalar == "-" {
+                slug.append(scalar)
+            } else if scalar == " " {
+                slug.append("-")
+            }
+        }
+        return String(slug)
+    }
 
     /// Indentation added per list-nesting level and for blockquotes.
     private let indentUnit: CGFloat = 22
@@ -77,6 +97,11 @@ struct MarkdownRenderer {
         let result = NSMutableAttributedString()
         var index = 0
         var afterTextBlock = false
+        // Slugs already assigned to headings, so duplicates get "-1", "-2"…
+        // suffixes the way GitHub disambiguates them. A set (not a counter)
+        // so a suffixed slug can never collide with a heading that slugs to
+        // the same text naturally ("Foo", "Foo", "Foo 1").
+        var usedAnchors: Set<String> = []
         while index < blocks.count {
             let block = blocks[index]
             if let tableID = tableIdentity(of: block.intent) {
@@ -98,7 +123,7 @@ struct MarkdownRenderer {
             // blocks even that leading space is absorbed INSIDE the second
             // block, so those adjacencies get a real spacer paragraph.
             if afterTextBlock, usesTextBlock(block) { appendBlockSpacer(to: result) }
-            append(block, to: result, isFirst: index == 0, extraSpacingBefore: afterTextBlock)
+            append(block, to: result, isFirst: index == 0, extraSpacingBefore: afterTextBlock, usedAnchors: &usedAnchors)
             afterTextBlock = usesTextBlock(block)
             index += 1
         }
@@ -204,7 +229,7 @@ struct MarkdownRenderer {
 
     // MARK: - Block rendering
 
-    private func append(_ block: Block, to result: NSMutableAttributedString, isFirst: Bool, extraSpacingBefore: Bool = false) {
+    private func append(_ block: Block, to result: NSMutableAttributedString, isFirst: Bool, extraSpacingBefore: Bool = false, usedAnchors: inout Set<String>) {
         let components = block.intent?.components ?? []
         let leafKind = components.first?.kind
 
@@ -302,6 +327,19 @@ struct MarkdownRenderer {
 
         let blockRange = NSRange(location: blockStart, length: result.length - blockStart)
         result.addAttribute(.paragraphStyle, value: style, range: blockRange)
+
+        // Tag headings with their anchor slug for `#fragment` navigation.
+        if headerLevel > 0 {
+            let base = Self.anchorSlug(for: block.runs.map(\.text).joined())
+            var slug = base
+            var suffix = 1
+            while usedAnchors.contains(slug) {
+                slug = "\(base)-\(suffix)"
+                suffix += 1
+            }
+            usedAnchors.insert(slug)
+            result.addAttribute(Self.headingAnchorKey, value: slug, range: blockRange)
+        }
         _ = markerLength
     }
 
@@ -399,12 +437,40 @@ struct MarkdownRenderer {
 
         if let link = run.link {
             attributes[.foregroundColor] = EditorTheme.linkColor
-            attributes[.link] = link
+            attributes[.link] = resolvedLink(link)
         } else {
             attributes[.foregroundColor] = NSColor.textColor
         }
 
         return NSAttributedString(string: run.text, attributes: attributes)
+    }
+
+    /// Where a click on this link should actually go. The parser hands
+    /// relative targets through nearly verbatim, and NSTextView can't open
+    /// those — so `README.ko.md` silently did nothing. Scheme'd URLs pass
+    /// through, relative paths resolve against the document's directory
+    /// into file URLs, and fragment-only links stay as-is for the Reader
+    /// view to turn into in-document jumps.
+    private func resolvedLink(_ url: URL) -> URL {
+        if url.scheme != nil { return url }
+        let path = url.relativePath
+        guard !path.isEmpty else { return url }  // "#fragment" — in-document
+        var resolved: URL
+        if path.hasPrefix("/") {
+            resolved = URL(fileURLWithPath: path)
+        } else if let baseURL {
+            // appendingPathComponent handles embedded subdirectories;
+            // standardizing collapses "./" and "../" segments.
+            resolved = baseURL.appendingPathComponent(path).standardizedFileURL
+        } else {
+            return url
+        }
+        if let fragment = url.fragment,
+           var components = URLComponents(url: resolved, resolvingAgainstBaseURL: false) {
+            components.fragment = fragment
+            resolved = components.url ?? resolved
+        }
+        return resolved
     }
 
     /// A local image as a scaled attachment; anything not loadable (remote,

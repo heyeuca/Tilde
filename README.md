@@ -42,7 +42,7 @@ It is **not** an IDE, a project workspace, a note database, or a Markdown author
 - Open, edit, and save `.txt`, `.md`, and `.markdown` files
 - Opens most UTF-based plain-text files (`.json`, `.yaml`, `.toml`, `.xml`, `.csv`, `.log`, `.env`, and more) as plain text
 - Lightweight Markdown styling that keeps syntax visible while improving readability
-- Reader mode (`⌘⇧R`) — a fully rendered, read-only view of a Markdown document, with tables, local images, and highlighted code blocks; toggle it from the title bar, just like Safari's Reader
+- Reader mode (`⌘⇧R`) — a fully rendered, read-only view of a Markdown document, with tables and highlighted code blocks; `#fragment` links jump within the document and web links open in your browser. Links and images pointing at neighboring local files work when macOS grants file access — the App Sandbox can block files that live next to the document (a blocked image shows its alt text; a blocked link does nothing). Toggle it from the title bar, just like Safari's Reader
 - Quiet syntax highlighting for config files: keys tinted in `.json`, `.yaml`, and `.toml`, everything else left alone
 - Standard editing: undo/redo, cut/copy/paste, drag-and-drop, spell check, Find & Replace
 - Word wrap (on by default) and optional line numbers

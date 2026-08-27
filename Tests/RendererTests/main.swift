@@ -75,6 +75,80 @@ do {
     expect(!s.string.contains("https://"), "link URL hidden in preview")
 }
 
+// MARK: - Relative link resolution (2026-08 app review P2)
+
+func link(_ s: NSAttributedString, at i: Int) -> URL? {
+    s.attribute(.link, at: i, effectiveRange: nil) as? URL
+}
+
+do {
+    let base = URL(fileURLWithPath: "/tmp/docs", isDirectory: true)
+    let r = MarkdownRenderer(baseURL: base)
+    let s = r.render("""
+        [sibling](README.ko.md) [sub](guides/setup.md) [up](../LICENSE) \
+        [frag](#section-title) [both](other.md#part) [web](https://example.com/x)
+        """)
+
+    let sibling = link(s, at: offset(of: "sibling", in: s))
+    expect(sibling?.isFileURL == true && sibling?.path == "/tmp/docs/README.ko.md",
+           "relative link resolved against the document directory")
+
+    let sub = link(s, at: offset(of: "sub", in: s))
+    expect(sub?.path == "/tmp/docs/guides/setup.md", "subdirectory link resolved")
+
+    let up = link(s, at: offset(of: "up", in: s))
+    expect(up?.path == "/tmp/LICENSE", "../ link collapsed to the parent directory")
+
+    let frag = link(s, at: offset(of: "frag", in: s))
+    expect(frag?.scheme == nil && frag?.fragment == "section-title" && frag?.relativePath.isEmpty == true,
+           "fragment-only link kept for in-document navigation")
+
+    let both = link(s, at: offset(of: "both", in: s))
+    expect(both?.isFileURL == true && both?.path == "/tmp/docs/other.md" && both?.fragment == "part",
+           "file link keeps its fragment")
+
+    let web = link(s, at: offset(of: "web", in: s))
+    expect(web?.absoluteString == "https://example.com/x", "absolute link passes through unchanged")
+}
+
+do {
+    // Untitled document (no baseURL): a relative link can't resolve — it
+    // must pass through unchanged rather than crash or invent a path.
+    let s = render("[rel](notes.md)\n")
+    let rel = link(s, at: offset(of: "rel", in: s))
+    expect(rel != nil && rel?.scheme == nil, "relative link without baseURL left as-is")
+}
+
+// MARK: - Heading anchors for #fragment jumps
+
+do {
+    let s = render("# Section Title\n\nbody\n\n## Section Title\n\n### 한글 제목!\n")
+    func anchor(at i: Int) -> String? {
+        s.attribute(MarkdownRenderer.headingAnchorKey, at: i, effectiveRange: nil) as? String
+    }
+    let first = offset(of: "Section Title", in: s)
+    expect(anchor(at: first) == "section-title", "heading tagged with its anchor slug")
+    let second = (s.string as NSString).range(of: "Section Title", options: .backwards).location
+    expect(anchor(at: second) == "section-title-1", "duplicate heading slug disambiguated")
+    let korean = offset(of: "한글 제목!", in: s)
+    expect(anchor(at: korean) == "한글-제목", "korean heading slug keeps letters, drops punctuation")
+    expect(anchor(at: offset(of: "body", in: s)) == nil, "body text carries no anchor")
+    expect(MarkdownRenderer.anchorSlug(for: "Hello, World!") == "hello-world", "slug drops punctuation")
+    expect(MarkdownRenderer.anchorSlug(for: "already-a-slug") == "already-a-slug", "slugging is idempotent")
+}
+
+do {
+    // A suffixed slug must not collide with a heading that slugs to the
+    // same text naturally: "Foo", "Foo", "Foo 1" must all stay unique.
+    let s = render("# Foo\n\n# Foo\n\n# Foo 1\n")
+    var slugs: [String] = []
+    s.enumerateAttribute(MarkdownRenderer.headingAnchorKey, in: NSRange(location: 0, length: s.length)) { v, _, _ in
+        if let slug = v as? String { slugs.append(slug) }
+    }
+    expect(slugs.count == 3 && Set(slugs).count == 3, "anchor slugs stay unique against natural collisions")
+    expect(slugs.first == "foo", "first heading keeps the bare slug")
+}
+
 // MARK: - Lists
 
 do {
@@ -256,6 +330,38 @@ do {
 do {
     let s = render("plain text no markdown at all\n")
     expect(font(s, at: 0)?.pointSize == 14, "plain paragraph is body font")
+}
+
+// MARK: - Performance: Reader entry cost at the sync-render threshold
+
+do {
+    // ReaderView renders documents up to 256 KB synchronously on entry
+    // (larger ones go to a background queue), and renders exactly ONCE per
+    // entry. This pins the entry cost at that threshold with a generous
+    // bound — a reintroduced double render or a parser-walk regression
+    // roughly doubles the time and trips it.
+    let piece = """
+        ## Section heading
+
+        A paragraph with **bold**, *italic*, `code`, and [a link](https://example.com).
+
+        - list item one
+        - list item two
+
+        ```swift
+        let value = compute(42)
+        ```
+
+        > a quoted line
+
+        """
+    var md = ""
+    while md.utf8.count < 256 * 1024 { md += piece }
+    let start = Date()
+    let out = renderer.render(md)
+    let elapsed = Date().timeIntervalSince(start)
+    expect(out.length > 0, "256 KB document renders")
+    expect(elapsed < 3.0, "256 KB render in \(String(format: "%.2f", elapsed))s (< 3s sync-entry bound)")
 }
 
 // MARK: - Fuzz: renderer must never crash

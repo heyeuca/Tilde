@@ -7,9 +7,12 @@ import Foundation
 
 /// A text encoding Tilde can read and write back unchanged.
 ///
-/// Detection order on read: BOM → strict UTF-8 → UTF-16 heuristic → lossy UTF-8.
+/// Detection order on read: BOM → UTF-16 heuristic → strict UTF-8 → lossy UTF-8.
 /// Whatever comes in goes back out: the original encoding (including the
-/// presence or absence of a BOM) is preserved on save.
+/// presence or absence of a BOM) is preserved on save. The lossy last
+/// resort is the one path that CANNOT round-trip — it substitutes U+FFFD
+/// for undecodable bytes — so it is flagged `isLossy` and the document
+/// layer refuses to write such a file back over the original.
 struct FileEncoding: Equatable {
     enum Base: Equatable {
         case utf8
@@ -25,19 +28,27 @@ struct FileEncoding: Equatable {
 
     // MARK: - Decoding
 
-    static func decode(_ data: Data) -> (string: String, encoding: FileEncoding) {
+    static func decode(_ data: Data) -> (string: String, encoding: FileEncoding, isLossy: Bool) {
         // 1. BOM
         if data.starts(with: [0xEF, 0xBB, 0xBF]),
            let string = String(data: data.dropFirst(3), encoding: .utf8) {
-            return (string, FileEncoding(base: .utf8, hasBOM: true))
+            return (string, FileEncoding(base: .utf8, hasBOM: true), false)
         }
-        if data.starts(with: [0xFE, 0xFF]),
-           let string = String(data: data.dropFirst(2), encoding: .utf16BigEndian) {
-            return (string, FileEncoding(base: .utf16BigEndian, hasBOM: true))
-        }
-        if data.starts(with: [0xFF, 0xFE]),
-           let string = String(data: data.dropFirst(2), encoding: .utf16LittleEndian) {
-            return (string, FileEncoding(base: .utf16LittleEndian, hasBOM: true))
+        // Foundation's UTF-16 decoders do NOT fail on odd-length data —
+        // they silently drop the trailing byte — so a truncated file would
+        // decode "successfully", pass as non-lossy, and lose its last byte
+        // on save. Require an even byte count (the BOM is 2 bytes, so the
+        // whole file is even iff the payload is); odd-length files fall
+        // through to the lossy path and open read-only.
+        if data.count.isMultiple(of: 2) {
+            if data.starts(with: [0xFE, 0xFF]),
+               let string = String(data: data.dropFirst(2), encoding: .utf16BigEndian) {
+                return (string, FileEncoding(base: .utf16BigEndian, hasBOM: true), false)
+            }
+            if data.starts(with: [0xFF, 0xFE]),
+               let string = String(data: data.dropFirst(2), encoding: .utf16LittleEndian) {
+                return (string, FileEncoding(base: .utf16LittleEndian, hasBOM: true), false)
+            }
         }
 
         // 2. UTF-16 without BOM: mostly-ASCII text has NULs in alternating
@@ -53,21 +64,25 @@ struct FileEncoding: Equatable {
             let threshold = sample.count / 4
             if zerosAtEven > threshold,
                let string = String(data: data, encoding: .utf16BigEndian) {
-                return (string, FileEncoding(base: .utf16BigEndian, hasBOM: false))
+                return (string, FileEncoding(base: .utf16BigEndian, hasBOM: false), false)
             }
             if zerosAtOdd > threshold,
                let string = String(data: data, encoding: .utf16LittleEndian) {
-                return (string, FileEncoding(base: .utf16LittleEndian, hasBOM: false))
+                return (string, FileEncoding(base: .utf16LittleEndian, hasBOM: false), false)
             }
         }
 
         // 3. Strict UTF-8
         if let string = String(data: data, encoding: .utf8) {
-            return (string, FileEncoding(base: .utf8, hasBOM: false))
+            return (string, FileEncoding(base: .utf8, hasBOM: false), false)
         }
 
-        // 4. Last resort: lossy UTF-8. Never refuse to open a text file.
-        return (String(decoding: data, as: UTF8.self), FileEncoding(base: .utf8, hasBOM: false))
+        // 4. Last resort: lossy UTF-8. Never refuse to open a text file —
+        // but re-encoding this string would not reproduce the original
+        // bytes (BOM-less UTF-16 CJK text, EUC-KR and other legacy
+        // encodings, or plain invalid UTF-8 all land here), so the result
+        // is marked lossy and must never be saved over the source file.
+        return (String(decoding: data, as: UTF8.self), FileEncoding(base: .utf8, hasBOM: false), true)
     }
 
     // MARK: - Encoding

@@ -26,11 +26,11 @@ struct EditorView: View {
 
     private var clampedFontSize: CGFloat { fontSize.clamped(to: AppSettings.fontSizeRange) }
 
-    /// Markdown-ness follows the LIVE file URL, not just the type the
-    /// document was opened with, so saving an untitled document as `.md`
-    /// switches typography, styling, and the Reader toggle immediately.
+    /// Markdown-ness follows the LIVE file URL: the current extension wins
+    /// (Save As from `.md` to `.txt` switches modes immediately, and back);
+    /// the open-time type only decides for extension-less files.
     private var isMarkdown: Bool {
-        document.isMarkdown || TextDocument.isMarkdownExtension(fileURL?.pathExtension ?? "")
+        TextDocument.isMarkdown(openedAsMarkdown: document.isMarkdown, fileURL: fileURL)
     }
 
     var body: some View {
@@ -53,12 +53,37 @@ struct EditorView: View {
                 ReaderView(
                     document: document,
                     fontSize: clampedFontSize,
+                    fileURL: fileURL,
                     entryFraction: { scrollBridge.readFraction() },
                     onExit: { isReaderMode = false }
                 )
             }
         }
+        // On ANY Reader exit — Esc, the title-bar toggle, or ⌘⇧R — the
+        // Reader's text view held first-responder status and is about to
+        // unmount; hand focus back to the editor so typing resumes without
+        // a click.
+        .onChange(of: isReaderMode) { _, entering in
+            if !entering { scrollBridge.focusEditor() }
+        }
+        // Save As from .md to .txt while Reader is open flips isMarkdown
+        // off, which removes the toolbar toggle and disables ⌘⇧R — leave
+        // Reader too, or the window would be stuck in a mode with no
+        // visible exit. Routing through isReaderMode restores focus above.
+        .onChange(of: isMarkdown) { _, isMarkdown in
+            if !isMarkdown { isReaderMode = false }
+        }
         .ignoresSafeArea()
+        // Applied after ignoresSafeArea so the bar sits below the title bar
+        // (inside the window's safe area) while the text stays full-bleed.
+        .safeAreaInset(edge: .top, spacing: 0) {
+            // A document whose bytes couldn't be decoded exactly opens
+            // read-only (saving would corrupt the original); this quiet bar
+            // is the explanation for the unresponsive keyboard.
+            if document.isLossy {
+                LossyEncodingNotice()
+            }
+        }
         // ⌘= catcher: .keyboardShortcut("+") only fires on the shifted key
         // (⌘⇧=), while Safari/TextEdit/Terminal all accept plain ⌘= for
         // zoom-in. An invisible button supplies the second key equivalent.
@@ -98,6 +123,29 @@ struct EditorView: View {
                     .help(isReaderMode ? "Hide Reader (⌘⇧R)" : "Reader (⌘⇧R)")
                 }
             }
+        }
+    }
+}
+
+// MARK: - Lossy-encoding notice
+
+/// One quiet line shown above a document whose bytes couldn't be decoded
+/// exactly. It explains the read-only state; the hard save block lives in
+/// `TextDocument.fileWrapper`.
+private struct LossyEncodingNotice: View {
+    var body: some View {
+        HStack(spacing: 6) {
+            Image(systemName: "lock.fill")
+                .font(.system(size: 10))
+            Text("Unsupported text encoding — opened read-only to protect the file.")
+                .font(.system(size: 11))
+        }
+        .foregroundStyle(.secondary)
+        .frame(maxWidth: .infinity)
+        .padding(.vertical, 6)
+        .background(.bar)
+        .overlay(alignment: .bottom) {
+            Divider()
         }
     }
 }

@@ -26,7 +26,7 @@ Everything here is verification and packaging, not features.
 | Full `xcodebuild` + sandbox verification | Xcode device | run docs/VERIFY.md top to bottom |
 | Distribution decision | ✅ DECIDED | Both channels: signed+notarized DMG via GitHub Releases, and the App Store (first submission manual via Xcode Organizer). Sandbox already on for both |
 | GitHub release pipeline | ✅ BUILT (awaiting secrets) | `release.yml`: tag push → build → Developer ID sign → `scripts/make_dmg.sh` → sign DMG → notarize → staple → GitHub release. Blocked only on the 6 repo secrets — setup steps in docs/RELEASING.md. Test first via workflow_dispatch (publishes an artifact, not a release) |
-| CI on pull requests | ✅ DONE | `.github/workflows/ci.yml`: Tests job runs `Tests/run.sh` (171 assertions, 5 suites); Build job runs a real `xcodebuild` Release build (unsigned) and uploads a `Tilde-unsigned` .app artifact. Already caught its first real bug (missing `import Combine` under MemberImportVisibility) |
+| CI on pull requests | ✅ DONE | `.github/workflows/ci.yml`: Tests job runs `Tests/run.sh` (252 assertions, 6 suites); Build job runs a real `xcodebuild` Release build (unsigned) and uploads a `Tilde-unsigned` .app artifact. Already caught its first real bug (missing `import Combine` under MemberImportVisibility) |
 | Test suites live in the repo | ✅ DONE | `Tests/` — plain-executable suites + `Tests/run.sh`; no XCTest, so they run with Command Line Tools alone (and on CI). XCTest-target migration no longer needed |
 | Screenshots for README | — | light/dark editor shots; add to repo (public) |
 | Open-source hygiene | — | CONTRIBUTING.md, issue templates. Keep them one screen, in Tilde's voice |
@@ -107,15 +107,24 @@ works on arbitrary ranges.
 ### Encoding edge cases (only on bug reports)
 
 Latin-1/CP949 fallback reading. PRODUCT §20 scopes this out of MVP;
-revisit only if real files fail to open.
+revisit only if real files fail to open. Since the 2026-08 app-review fixes such
+files are SAFE — they open read-only with a notice and can't be saved
+over — so this is purely about letting them be edited, not data loss.
+
+### Reader sibling images under the sandbox (security-scoped folder grant)
+
+Opening `doc.md` grants sandbox access to that file only, so a relative
+`./images/foo.png` shows its alt-text fallback in the sandboxed build
+(READER.md constraint B; README describes the limitation). If real-world
+use demands sibling images: ask once per folder via `NSOpenPanel`, persist
+a security-scoped bookmark, resolve images through it. It's a product
+trade (quiet app vs. permission prompt) — gate on demand, and verify on
+the Xcode device since the dev machine can't run sandboxed builds.
 
 ## Known small debts (fix opportunistically)
 
 - Empty line inside a code fence still shows the taller caret
   (lineSpacing swallowed into the line box; rare enough to defer)
-- Gutter `lineNumber(at:)` scans from document start per draw of the
-  first visible fragment — fine at MVP sizes, cache line starts if
-  line numbers + huge files becomes a pattern
 - `TextDocument` Sendable warning (NSTextStorage property) — silence
   properly with `nonisolated(unsafe)` or an isolation annotation when
   the Swift story settles

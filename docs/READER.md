@@ -77,7 +77,7 @@ different app.
 | Blockquote | quoteColor + a quiet left bar (NSTextBlock border) |
 | Code block | codeFont + one filled NSTextBlock, tokens tinted by `CodeHighlighter` (comments/strings/numbers/keywords) |
 | Thematic break | hairline via 1-pt NSTextAttachment image spanning content width |
-| Link | linkColor + `.link` attribute (clickable; read-only view makes this safe) |
+| Link | linkColor + `.link` attribute (clickable; read-only view makes this safe). Relative paths resolve against the document's directory; `#fragment` links jump to the matching rendered heading (GitHub-style slugs, duplicates get `-1`/`-2`…); local files open as their own document windows (sandbox permitting); scheme'd URLs go to the system default |
 | Inline bold/italic/code/strike | same tokens as the editor styler |
 | Table | NSTextTable / NSTextTableBlock paragraph styles (see constraint A) |
 | Image (local) | NSTextAttachment, scaled to fit content width (constraint B) |
@@ -110,16 +110,22 @@ that's a product decision (quiet app vs permission prompt), not v1.
 
 - Render happens on: entering Reader, document instance change (Revert),
   font size change. NOT live-per-keystroke — there is no editing path
-  while the editor is hidden.
+  while the editor is hidden. Exactly ONCE per entry: the file URL (for
+  relative link/image resolution) is passed into `ReaderView` rather than
+  read off the window, so nothing needs a second deferred render, and the
+  render cache key includes content, font size, AND base URL.
 - **Performance**: Apple's `AttributedString(markdown:)` parser dominates
   the cost and cannot be sped up (measured: ~90 ms at 50 KB, ~170 ms at
   100 KB, ~1.8 s at 1 MB, ~7.5 s at 4 MB). Documents ≤ 256 KB render
   synchronously (no flash); larger ones render on a background queue with a
   generation token so ⌘⇧R never freezes the UI. Verified with a size-sweep
   benchmark and a 500-input renderer fuzz (no crashes).
-- Scroll sync: **deferred to v2.** Doing it well needs scroll observation
-  and restore on the editor side (already stable), and most rendered
-  documents start at the top anyway. Reader opens at the top for now.
+- Scroll position: Reader opens at the editor's reading position — the
+  editor reports the fraction of characters above its viewport
+  (`EditorScrollBridge.readFraction`) and Reader scrolls there after
+  render. It's the approximate fractional mapping ROADMAP sketched, not
+  live sync: positions are exchanged only at mode entry, and continuous
+  editor↔Reader sync stays deferred (§7).
 
 ## 5. Failure policy
 
@@ -141,13 +147,17 @@ A fuzz test (random byte-noise + truncated markdown) asserts no crash.
 Each milestone ends buildable + visually verified on the smoke bundle.
 
 Status: milestones 1–5 implemented and verified on the smoke bundle
-(renderer 51 CLI tests incl. fuzz; mode toggle, tables, and local images
-confirmed visually). Remaining before shipping: real-sandbox image
-behavior and the whole feature under a full Xcode build (docs/VERIFY.md).
+(renderer 75 CLI tests incl. fuzz, link resolution, and an entry-cost
+timing bound; mode toggle, tables, and local images confirmed visually).
+Post-review additions: relative/fragment link navigation, single-render
+entry, and focus restore on every Reader exit (2026-08 app review). Remaining
+before shipping: real-sandbox image behavior and the whole feature under
+a full Xcode build (docs/VERIFY.md).
 
 ## 7. Explicitly not in v1
 
-- Scroll position sync between editor and Reader (v2)
+- CONTINUOUS scroll sync between editor and Reader (entry position IS
+  restored via fractional offset — see §4; live two-way sync is v2)
 - Live side-by-side or live-typing reader (mode only, §8)
 - Remote images, raw HTML, footnotes, task-list checkboxes (the parser
   doesn't emit them anyway)

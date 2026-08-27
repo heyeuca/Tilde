@@ -61,6 +61,7 @@ Tilde
 │   ├── MarkdownStyler.swift       Attribute-only Markdown styling rules
 │   ├── CodeSyntaxStyler.swift     JSON/YAML/TOML keys-only highlighting
 │   ├── LineNumberRulerView.swift  Adaptive-width gutter (off by default)
+│   ├── LineIndex.swift            Incremental newline index for the gutter
 │   └── EditorTheme.swift          Font/color tokens (semantic colors only)
 ├── Reader
 │   ├── ReaderView.swift           Read-only rendered Markdown (⌘⇧R)
@@ -82,23 +83,32 @@ Tilde
   `String` only when a save snapshot is taken), plus metadata captured at load:
   - `encoding: FileEncoding` (default `.utf8` for new documents)
   - `lineEnding: LineEnding` (default `.lf` for new documents)
+  - `isLossy: Bool` — true when the bytes couldn't be decoded exactly
 - **Read**: detect encoding → decode → detect dominant line ending → normalize buffer to LF.
 - **Write (snapshot)**: restore original line endings → encode with original encoding.
 - Registered content types: `public.plain-text`, `net.daringfireball.markdown`
   and `io.toml.toml` (both imported UTIs, see Info.plist), plus `public.text`
   so the broader family (JSON, XML, …) opens via "Open With".
-- Markdown-ness for styling/Reader is derived from the LIVE file URL in
-  `EditorView`, so Save As with a Markdown extension switches modes
-  without reopening.
+- Markdown-ness for styling/Reader follows the LIVE file URL
+  (`TextDocument.isMarkdown(openedAsMarkdown:fileURL:)`): the current
+  extension wins, so Save As between `.md` and `.txt`/`.json` switches
+  modes without reopening; the open-time type only decides for
+  extension-less files and untitled documents.
 
 ### Encoding detection order
 
 1. BOM present → UTF-8 / UTF-16 BE / UTF-16 LE
-2. Try strict UTF-8 decode
-3. Fall back to UTF-16 heuristics
+2. UTF-16 without BOM via the NUL-alternation heuristic (must run before
+   the UTF-8 pass — NUL bytes are valid UTF-8)
+3. Try strict UTF-8 decode
 4. Last resort: lossy UTF-8 (never fail to open a text file)
 
-No encoding conversion UI. What comes in goes back out unchanged.
+No encoding conversion UI. What comes in goes back out unchanged — except
+the lossy last resort, which CANNOT round-trip (invalid UTF-8, BOM-less
+UTF-16 CJK, legacy encodings like EUC-KR): those documents open
+**read-only** with a one-line notice, and `fileWrapper` refuses to write
+them as a backstop, so a plain open-and-save can never corrupt a file
+Tilde couldn't fully read.
 
 ---
 
@@ -115,7 +125,14 @@ No encoding conversion UI. What comes in goes back out unchanged.
   - `allowsUndo = true`, undo manager wired to the window's document undo manager
   - spell checking / substitutions follow macOS user settings
 - Word wrap toggle = text container width tracking on/off + horizontal scroll.
-- Line numbers (off by default): `NSRulerView`-based gutter, added only when enabled.
+- Line numbers (off by default): `NSRulerView`-based gutter, added only when
+  enabled. Line counting is incremental (`LineIndex`, a sorted newline-offset
+  array updated from `NSTextStorage` edit deltas) — no O(n) rescan per
+  keystroke, so the gutter stays free on multi-MB documents.
+- Keyboard focus: `EditorTextView.viewDidMoveToWindow` claims first
+  responder when the window still holds it (a fresh document window parks
+  focus on itself — typing went nowhere until a click); Reader exit hands
+  focus back through `EditorScrollBridge.focusEditor`.
 
 ### Layout (EditorView)
 

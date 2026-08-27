@@ -6,11 +6,13 @@
 import SwiftUI
 import AppKit
 
-/// Lets `EditorView` ask the editor for its current reading position
-/// (fraction of characters above the viewport top) without holding a
-/// reference to the AppKit text view.
+/// Lets `EditorView` talk to the AppKit text view without holding a
+/// reference to it: ask for the current reading position (fraction of
+/// characters above the viewport top) and hand keyboard focus back after
+/// Reader mode exits.
 final class EditorScrollBridge {
     var readFraction: () -> CGFloat = { 0 }
+    var focusEditor: () -> Void = {}
 }
 
 /// Wraps an AppKit `NSTextView` (TextKit 2) for SwiftUI.
@@ -178,11 +180,33 @@ struct TextEditorView: NSViewRepresentable {
             attachedDocument = document
             self.textView = textView
             textView.textContentStorage?.textStorage = document.textStorage
+            // Lossily decoded documents are read-only: every byte the user
+            // could save is already not the original (TextDocument blocks
+            // the write as well).
+            textView.isEditable = !document.isLossy
             parent.scrollBridge?.readFraction = { [weak self] in
                 self?.currentReadingFraction() ?? 0
             }
+            parent.scrollBridge?.focusEditor = { [weak self] in
+                self?.claimKeyboardFocus()
+            }
             apply(settings, to: textView, in: scrollView)
             restyleAll()
+            // The storage swap invalidates the gutter's line index (Revert To
+            // replaces the whole document instance).
+            (scrollView.verticalRulerView as? LineNumberRulerView)?.rebuildLineIndex()
+        }
+
+        /// Makes the editor the window's first responder. Deferred one
+        /// runloop so the Reader's text view (the outgoing responder) has
+        /// unmounted by the time focus moves; used on Reader exit, where
+        /// reclaiming focus is unconditionally correct. Initial focus for a
+        /// fresh window is handled by `EditorTextView.viewDidMoveToWindow`.
+        func claimKeyboardFocus() {
+            DispatchQueue.main.async { [weak self] in
+                guard let textView = self?.textView, let window = textView.window else { return }
+                window.makeFirstResponder(textView)
+            }
         }
 
         /// Fraction (0…1) of the document's characters above the top of the

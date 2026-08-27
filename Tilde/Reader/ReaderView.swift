@@ -14,6 +14,10 @@ import AppKit
 struct ReaderView: NSViewRepresentable {
     var document: TextDocument
     var fontSize: CGFloat
+    /// The document's file URL: its directory anchors relative image and
+    /// link paths. Passed in (rather than read off the window) so the
+    /// first render can already resolve them.
+    var fileURL: URL?
     /// Asks the editor for its reading position (fraction of characters
     /// above the viewport top) so Reader opens at the same place instead of
     /// the top. Read at makeNSView time — the editor is still mounted
@@ -21,6 +25,8 @@ struct ReaderView: NSViewRepresentable {
     var entryFraction: () -> CGFloat = { 0 }
     /// Called when the user presses Esc to leave Reader.
     var onExit: () -> Void
+
+    private var baseURL: URL? { fileURL?.deletingLastPathComponent() }
 
     func makeNSView(context: Context) -> NSScrollView {
         // Build the TextKit 1 stack explicitly: NSTextTable (used for
@@ -43,6 +49,8 @@ struct ReaderView: NSViewRepresentable {
 
         let textView = ExitingTextView(frame: .zero, textContainer: container)
         textView.onExit = onExit
+        // The coordinator handles clicks on local and in-document links.
+        textView.delegate = context.coordinator
         textView.isEditable = false
         textView.isSelectable = true
         textView.isRichText = true
@@ -67,12 +75,18 @@ struct ReaderView: NSViewRepresentable {
         scrollView.documentView = textView
 
         context.coordinator.textView = textView
-        // Capture the editor's position now; restore it only in the deferred
-        // render below — at this point the view has no window and a zero
-        // frame, so a scroll here would be computed against bogus geometry
-        // and thrown away one runloop later anyway.
-        let entry = entryFraction()
-        context.coordinator.render(document: document, fontSize: fontSize)
+        // Render exactly once: relative paths resolve against the passed-in
+        // fileURL, so nothing needs to wait for the window (a second render
+        // here used to double the entry cost on large documents). The entry
+        // scroll is deferred inside render — at this point the view has no
+        // window and a zero frame, so a scroll now would be computed against
+        // bogus geometry and thrown away one runloop later anyway.
+        context.coordinator.render(
+            document: document,
+            fontSize: fontSize,
+            baseURL: baseURL,
+            restoringFraction: entryFraction()
+        )
 
         // Re-center the capped content column when the window resizes;
         // updateNSView alone doesn't fire on live resize.
@@ -84,21 +98,18 @@ struct ReaderView: NSViewRepresentable {
             object: textView
         )
 
-        // Become first responder so Esc (cancelOperation) reaches this view,
-        // and re-render now that the window (and its represented URL, used to
-        // resolve relative image paths) is available.
+        // Become first responder so Esc (cancelOperation) reaches this view.
         // The find bar, when open, takes the responder chain first, so ⌘F's
         // own Esc still closes the search before this exits Reader.
         DispatchQueue.main.async { [weak textView] in
             textView?.window?.makeFirstResponder(textView)
-            context.coordinator.render(document: document, fontSize: fontSize, restoringFraction: entry)
         }
         return scrollView
     }
 
     func updateNSView(_ scrollView: NSScrollView, context: Context) {
         (scrollView.documentView as? ExitingTextView)?.onExit = onExit
-        context.coordinator.renderIfNeeded(document: document, fontSize: fontSize)
+        context.coordinator.renderIfNeeded(document: document, fontSize: fontSize, baseURL: baseURL)
         context.coordinator.centerContent(in: scrollView)
     }
 
@@ -108,10 +119,11 @@ struct ReaderView: NSViewRepresentable {
 
     func makeCoordinator() -> Coordinator { Coordinator() }
 
-    final class Coordinator: NSObject {
+    final class Coordinator: NSObject, NSTextViewDelegate {
         weak var textView: NSTextView?
         private var renderedText: String?
         private var renderedSize: CGFloat?
+        private var renderedBaseURL: URL?
         /// Bumped per render so a slow background render can tell if it has
         /// been superseded before it installs its result.
         private var generation = 0
@@ -120,24 +132,31 @@ struct ReaderView: NSViewRepresentable {
         /// larger ones render off the main thread so ⌘⇧P never freezes.
         private static let syncThreshold = 256 * 1024
 
-        func renderIfNeeded(document: TextDocument, fontSize: CGFloat) {
-            if document.textStorage.string == renderedText, fontSize == renderedSize { return }
-            render(document: document, fontSize: fontSize)
+        func renderIfNeeded(document: TextDocument, fontSize: CGFloat, baseURL: URL?) {
+            if document.textStorage.string == renderedText, fontSize == renderedSize, baseURL == renderedBaseURL { return }
+            render(document: document, fontSize: fontSize, baseURL: baseURL)
         }
 
-        func render(document: TextDocument, fontSize: CGFloat, restoringFraction: CGFloat? = nil) {
+        func render(document: TextDocument, fontSize: CGFloat, baseURL: URL?, restoringFraction: CGFloat? = nil) {
             guard let textView else { return }
             let text = document.textStorage.string
-            let baseURL = textView.window?.representedURL?.deletingLastPathComponent()
             renderedText = text
             renderedSize = fontSize
+            renderedBaseURL = baseURL
             generation += 1
             let token = generation
             let renderer = MarkdownRenderer(fontSize: fontSize, baseURL: baseURL)
 
             if text.utf8.count <= Self.syncThreshold {
                 textView.textStorage?.setAttributedString(renderer.render(text))
-                if let restoringFraction { scroll(toCharacterFraction: restoringFraction) }
+                if let restoringFraction {
+                    // Geometry (window, frame) is only trustworthy one
+                    // runloop after makeNSView; the content is already in
+                    // place, so the deferred scroll doesn't flash.
+                    DispatchQueue.main.async { [weak self] in
+                        self?.scroll(toCharacterFraction: restoringFraction)
+                    }
+                }
                 return
             }
 
@@ -158,15 +177,15 @@ struct ReaderView: NSViewRepresentable {
         /// editor's position (source and rendered lengths differ only by the
         /// dissolved markers).
         private func scroll(toCharacterFraction fraction: CGFloat) {
-            guard
-                fraction > 0,
-                let textView,
-                let layoutManager = textView.layoutManager
-            else { return }
+            guard fraction > 0, let textView else { return }
             let length = (textView.string as NSString).length
             guard length > 0 else { return }
+            scroll(toCharacterIndex: min(length - 1, Int(CGFloat(length) * fraction)))
+        }
 
-            let target = min(length - 1, Int(CGFloat(length) * fraction))
+        /// Scrolls the line containing `target` to the top of the viewport.
+        private func scroll(toCharacterIndex target: Int) {
+            guard let textView, let layoutManager = textView.layoutManager else { return }
             // Lay out only the target's own range: with non-contiguous
             // layout TextKit estimates the height above it, so a large
             // document doesn't pay a full main-thread layout pass here.
@@ -174,6 +193,58 @@ struct ReaderView: NSViewRepresentable {
             let glyphIndex = layoutManager.glyphIndexForCharacter(at: target)
             let lineRect = layoutManager.lineFragmentRect(forGlyphAt: glyphIndex, effectiveRange: nil)
             textView.scroll(NSPoint(x: 0, y: lineRect.minY + textView.textContainerInset.height))
+        }
+
+        // MARK: - Link clicks
+
+        /// Routes clicked links: `#fragment` jumps to the matching rendered
+        /// heading, local files open as their own document windows, and
+        /// anything with a scheme falls through to the system default
+        /// (browser, Mail, …). The renderer has already resolved relative
+        /// paths against the document's directory.
+        func textView(_ textView: NSTextView, clickedOnLink link: Any, at charIndex: Int) -> Bool {
+            guard let url = link as? URL else { return false }
+
+            if url.scheme == nil, url.relativePath.isEmpty, let fragment = url.fragment {
+                scroll(toAnchor: fragment)
+                return true
+            }
+
+            if url.isFileURL {
+                // Strip a `file.md#section` fragment; open the file itself.
+                // Under the sandbox this succeeds only for paths the app can
+                // already read — on failure the user just hears the beep.
+                let fileOnly = URL(fileURLWithPath: url.path)
+                NSDocumentController.shared.openDocument(withContentsOf: fileOnly, display: true) { _, _, error in
+                    if error != nil { NSSound.beep() }
+                }
+                return true
+            }
+
+            return false
+        }
+
+        /// Jumps to the heading whose anchor slug matches `fragment`
+        /// (percent-decoded, then slugified the same way heading text is).
+        private func scroll(toAnchor fragment: String) {
+            guard let textView, let storage = textView.textStorage else { return }
+            let decoded = fragment.removingPercentEncoding ?? fragment
+            let target = MarkdownRenderer.anchorSlug(for: decoded)
+            var location: Int?
+            storage.enumerateAttribute(
+                MarkdownRenderer.headingAnchorKey,
+                in: NSRange(location: 0, length: storage.length)
+            ) { value, range, stop in
+                if let slug = value as? String, slug == target {
+                    location = range.location
+                    stop.pointee = true
+                }
+            }
+            guard let location else {
+                NSSound.beep()
+                return
+            }
+            scroll(toCharacterIndex: location)
         }
 
         /// Markdown content is capped and centered like the editor.
