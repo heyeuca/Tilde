@@ -50,8 +50,14 @@ Plus: `EditorView` gains the mode state, `TildeApp` the menu command.
   1. **Title-bar toggle** — a single `.toolbar` item (`Toggle` in
      `.button` style) beside the file name, shown only for Markdown
      documents. Window uses `.unifiedCompact` toolbar style so there is no
-     separate toolbar row; plain-text/config windows show no button and
-     stay chrome-free. The book icon fills/accents when Reader is active.
+     separate toolbar row. Plain-text/config windows show no button but
+     still carry the toolbar (an invisible flexible space): with no
+     toolbar at all, AppKit gives those windows a shorter title bar and a
+     permanently visible proxy icon, so `.md` and `.txt` windows looked
+     subtly different and Save As between them made the title bar jump.
+     Every window now shares one title-bar treatment — the proxy icon
+     appears on hover, macOS-standard. The book icon fills/accents when
+     Reader is active.
   2. **Menu**: View → “Show Reader” / “Hide Reader”, `⌘⇧R`, Safari-style
      dynamic label. Wiring: `focusedSceneValue` binding read by
      `ViewCommands` via `@FocusedValue`.

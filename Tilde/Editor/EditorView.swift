@@ -102,10 +102,16 @@ struct EditorView: View {
         // only the file name (PRODUCT.md §17).
         .publishReaderToggle($isReaderMode, enabled: isMarkdown)
         .toolbar {
-            // A single quiet toggle in the title bar — only for Markdown
-            // documents, so plain-text and config windows stay chrome-free.
-            if isMarkdown {
-                ToolbarItem(placement: .primaryAction) {
+            // A single quiet toggle in the title bar — usable only for
+            // Markdown documents, but the toolbar ITEM exists for every
+            // window: without any toolbar AppKit gives the window a
+            // shorter title bar with a permanently visible proxy icon, so
+            // .md and .txt windows looked subtly different (and Save As
+            // between the two made the title bar jump). An invisible,
+            // disabled placeholder keeps plain-text windows chrome-free
+            // while every window shares one title-bar treatment.
+            ToolbarItem(placement: .primaryAction) {
+                if isMarkdown {
                     Button {
                         isReaderMode.toggle()
                     } label: {
@@ -121,6 +127,12 @@ struct EditorView: View {
                         }
                     }
                     .help(isReaderMode ? "Hide Reader (⌘⇧R)" : "Reader (⌘⇧R)")
+                } else {
+                    // A flexible space, not a control: a disabled button
+                    // (or any fixed-size view) still gets a glass item
+                    // capsule, while a spacer keeps the toolbar alive
+                    // without drawing anything.
+                    Spacer()
                 }
             }
         }
