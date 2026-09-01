@@ -1,6 +1,12 @@
-# Tilde
+<p align="center">
+  <img src="docs/assets/icon.png" alt="Tilde 아이콘" width="128" height="128">
+</p>
 
-[![CI](https://github.com/heyeuca/Tilde/actions/workflows/ci.yml/badge.svg)](https://github.com/heyeuca/Tilde/actions/workflows/ci.yml)
+<h1 align="center">Tilde</h1>
+
+<p align="center">
+  <a href="https://github.com/heyeuca/Tilde/actions/workflows/ci.yml"><img src="https://github.com/heyeuca/Tilde/actions/workflows/ci.yml/badge.svg" alt="CI"></a>
+</p>
 
 *[English](README.md) · 한국어*
 
