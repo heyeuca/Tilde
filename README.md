@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="docs/assets/icon.png" alt="Tilde icon" width="128" height="128">
+  <a href="https://github.com/heyeuca/Tilde/releases"><img src="docs/assets/icon.png" alt="Tilde icon" width="128" height="128"></a>
 </p>
 
 <h1 align="center">Tilde</h1>
