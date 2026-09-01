@@ -8,7 +8,7 @@
   <a href="https://github.com/heyeuca/Tilde/actions/workflows/ci.yml"><img src="https://github.com/heyeuca/Tilde/actions/workflows/ci.yml/badge.svg" alt="CI"></a>
 </p>
 
-*[English](README.md) · 한국어*
+*[English](README.md) · 한국어 · [日本語](README.ja.md) · [简体中文](README.zh.md)*
 
 **macOS를 위한 작고 아름다운 텍스트 에디터.**
 
