@@ -39,11 +39,13 @@ enum AppearanceSetting: String, CaseIterable, Identifiable {
 
     var id: String { rawValue }
 
+    /// Localized picker label. `Text(String)` renders verbatim, so the
+    /// lookup has to happen here rather than at the call site.
     var label: String {
         switch self {
-        case .system: "System"
-        case .light: "Light"
-        case .dark: "Dark"
+        case .system: String(localized: "System")
+        case .light: String(localized: "Light")
+        case .dark: String(localized: "Dark")
         }
     }
 

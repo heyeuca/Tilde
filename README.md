@@ -53,6 +53,7 @@ It is **not** an IDE, a project workspace, a note database, or a Markdown author
 - Standard editing: undo/redo, cut/copy/paste, drag-and-drop, spell check, Find & Replace
 - Word wrap (on by default) and optional line numbers
 - Light / Dark / System appearance using macOS semantic colors
+- Interface in English, Korean, Japanese, and Simplified Chinese, following your macOS language
 - Fast launch and near-zero idle resource usage
 - Full macOS integration: Open With, file associations, Recent Documents, Autosave, Versions, Full Screen, window tabs
 

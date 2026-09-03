@@ -67,10 +67,42 @@ Tilde
 │   ├── ReaderView.swift           Read-only rendered Markdown (⌘⇧R)
 │   ├── MarkdownRenderer.swift     PresentationIntent → NSAttributedString
 │   └── CodeHighlighter.swift      Generic lexer for fenced code blocks
-└── Settings
-    ├── AppSettings.swift          @AppStorage keys in one place
-    └── SettingsView.swift         Single-screen settings
+├── Settings
+│   ├── AppSettings.swift          @AppStorage keys in one place
+│   └── SettingsView.swift         Single-screen settings
+├── Localizable.xcstrings          UI strings — en source, ko / ja / zh-Hans
+└── InfoPlist.xcstrings            Document type names shown by Finder
 ```
+
+### Localization
+
+Tilde ships in English, Korean, Japanese, and Simplified Chinese. The
+mechanism is the standard one, chosen so there is nothing to maintain:
+
+- **String Catalogs, not `.strings` files.** SwiftUI's `Text("…")`,
+  `Button("…")`, `Toggle("…")`, `Section("…")`, `.help("…")` literals are
+  `LocalizedStringKey`s already; the only code-side rule is that a string
+  handed around as a plain `String` (e.g. `AppearanceSetting.label`, the
+  Reader's `(image)` placeholder, error descriptions) goes through
+  `String(localized:)`. Interpolations become printf keys — the Settings
+  stepper's `"Font Size: \(Int(fontSize)) pt"` is the catalog entry
+  `Font Size: %lld pt`.
+- **Terminology follows Apple.** Where macOS already names a concept —
+  Safari's Reader (읽기 도구 / リーダー / 阅读器), TextEdit's wrap, System
+  Settings' appearance — Tilde uses the same words, so the app reads like
+  a built-in one (PRODUCT.md §35). Font-size commands match the READMEs.
+- **Standard menus come free.** File / Edit / Format / View / Window / Help
+  and every system panel are localized by AppKit as soon as the bundle
+  contains the matching `<lang>.lproj` folder; the catalogs only cover
+  Tilde's own two dozen strings.
+- **Adding a language**: add the translations to both catalogs (Xcode's
+  catalog editor, or by hand — the file is JSON) and the region to
+  `knownRegions` in `project.pbxproj`. `Tests/LocalizationTests` then
+  enforces completeness for it once it is added to `shippedLanguages`.
+- **Development without Xcode.** `xcodebuild` compiles the catalogs; the
+  swiftc smoke bundle can't, so `scripts/compile_xcstrings.py` writes the
+  equivalent `.lproj/*.strings` into the bundle. Try a language with
+  `open Tilde.app --args -AppleLanguages '(ko)'`.
 
 ---
 

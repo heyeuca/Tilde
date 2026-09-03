@@ -475,7 +475,14 @@ struct MarkdownRenderer {
 
     /// A local image as a scaled attachment; anything not loadable (remote,
     /// missing, or sandbox-denied) falls back to its alt text.
-    private func imageAttributed(altText: String, url: URL) -> NSAttributedString {
+    private func imageAttributed(altText rawAltText: String, url: URL) -> NSAttributedString {
+        // `![](x.png)` — an image with no alt — arrives from the Markdown
+        // parser as U+FFFC (the object-replacement character), not as an
+        // empty run, so strip it or the fallbacks below never trigger.
+        let altText = rawAltText
+            .replacingOccurrences(of: "\u{FFFC}", with: "")
+            .trimmingCharacters(in: .whitespaces)
+
         // Never fetch remote images (privacy §30) — show alt text as a link.
         if let scheme = url.scheme?.lowercased(), scheme == "http" || scheme == "https" {
             return NSAttributedString(string: altText.isEmpty ? url.absoluteString : altText, attributes: [
@@ -508,7 +515,7 @@ struct MarkdownRenderer {
         }
 
         // Missing / unreadable: quiet alt-text placeholder.
-        let label = altText.isEmpty ? "(image)" : altText
+        let label = altText.isEmpty ? String(localized: "(image)") : altText
         return NSAttributedString(string: "🖼 \(label)", attributes: [
             .font: EditorTheme.bodyFont(monospaced: false, size: fontSize),
             .foregroundColor: EditorTheme.quoteColor,

@@ -296,6 +296,16 @@ do {
 }
 
 do {
+    // Empty alt text: the parser hands over U+FFFC, which must not leak
+    // into the placeholder — the generic "(image)" label shows instead.
+    let s = render("![](nope/missing.png)\n")
+    expect(!s.string.contains("\u{FFFC}"), "empty-alt placeholder has no object-replacement character")
+    expect(s.string.contains("(image)"), "empty-alt placeholder falls back to the generic label")
+    let remote = render("![](https://example.com/pic.png)\n")
+    expect(remote.string.contains("https://example.com/pic.png"), "empty-alt remote image falls back to its URL")
+}
+
+do {
     // Real local image resolved against baseURL → attachment.
     let dir = URL(fileURLWithPath: NSTemporaryDirectory()).appendingPathComponent("tilde-img-\(getpid())")
     try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)

@@ -56,6 +56,9 @@ build_and_run LexerTests \
     Tilde/Reader/CodeHighlighter.swift \
     Tests/LexerTests/main.swift || status=1
 
+build_and_run LocalizationTests \
+    Tests/LocalizationTests/main.swift || status=1
+
 build_and_run RendererTests \
     Tilde/Editor/EditorTheme.swift \
     Tilde/Reader/CodeHighlighter.swift \

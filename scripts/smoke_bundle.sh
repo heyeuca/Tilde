@@ -28,6 +28,11 @@ xcrun swiftc -O -target "$TARGET" -sdk "$(xcrun --show-sdk-path)" \
     Tilde/Reader/*.swift Tilde/Settings/*.swift \
     2> >(grep -v -i "warning" >&2 || true)
 
+# String Catalogs: xcodebuild compiles these into <lang>.lproj/*.strings;
+# without it, do the same by hand so localization is testable here
+# (launch with `-AppleLanguages '(ko)'` to try a language).
+scripts/compile_xcstrings.py "$APP/Contents/Resources" Tilde/*.xcstrings
+
 # The repo Info.plist holds only the document/UTI declarations (Xcode
 # generates the identity keys at build time), so fill those in here.
 cp Tilde/Info.plist "$APP/Contents/Info.plist"
@@ -35,6 +40,7 @@ for entry in \
     "CFBundleExecutable string Tilde" \
     "CFBundleIdentifier string local.tilde.smoke" \
     "CFBundleName string Tilde" \
+    "CFBundleDevelopmentRegion string en" \
     "CFBundlePackageType string APPL" \
     "CFBundleShortVersionString string 0.0-smoke" \
     "LSMinimumSystemVersion string 14.0"; do
