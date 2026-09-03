@@ -25,13 +25,18 @@ struct Catalog {
     let sourceLanguage: String
     /// key -> language -> value (only "translated" units count)
     let strings: [String: [String: String]]
+    /// Entries Xcode manages that are deliberately not translated
+    /// (`"shouldTranslate" : false` — e.g. CFBundleName, which stays "Tilde").
+    let untranslated: Set<String>
 
     init(path: String) throws {
         let data = try Data(contentsOf: URL(fileURLWithPath: path))
         let root = try JSONSerialization.jsonObject(with: data) as! [String: Any]
         sourceLanguage = root["sourceLanguage"] as! String
         var out: [String: [String: String]] = [:]
+        var skip = Set<String>()
         for (key, entry) in root["strings"] as! [String: Any] {
+            if (entry as! [String: Any])["shouldTranslate"] as? Bool == false { skip.insert(key); continue }
             var perLang: [String: String] = [:]
             let localizations = (entry as! [String: Any])["localizations"] as? [String: Any] ?? [:]
             for (lang, loc) in localizations {
@@ -43,6 +48,7 @@ struct Catalog {
             out[key] = perLang
         }
         strings = out
+        untranslated = skip
     }
 }
 
@@ -156,6 +162,8 @@ for source in uiSources {
     }
 }
 check(referenced.count >= 20, "found a plausible number of UI literals (\(referenced.count))")
+check(!referenced.contains(""), "no empty localizable literal (use Text(verbatim:) for placeholder labels)")
+check(localizable.untranslated.isEmpty, "Localizable.xcstrings has no shouldTranslate=false entries (\(localizable.untranslated))")
 
 for key in localizable.strings.keys {
     check(referenced.contains(key), "Localizable.xcstrings: \"\(key)\" is no longer referenced from source")
@@ -194,6 +202,10 @@ check(typeNames.count >= 3, "Info.plist declares document types")
 for name in typeNames {
     check(infoPlist.strings[name] != nil, "InfoPlist.xcstrings: document type \"\(name)\" has no entry")
 }
+// Xcode adds the generated Info.plist keys on every build; they stay marked
+// shouldTranslate=false (the app is "Tilde" in every language).
+check(infoPlist.untranslated == ["CFBundleName", "NSHumanReadableCopyright"],
+      "InfoPlist.xcstrings: only the Xcode-managed identity keys are untranslated (\(infoPlist.untranslated))")
 checkTranslations(infoPlist, name: "InfoPlist.xcstrings")
 
 print("\(passes) passed, \(failures) failed")

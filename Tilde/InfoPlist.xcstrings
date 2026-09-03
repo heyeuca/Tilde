@@ -11,7 +11,8 @@
             "value" : "Tilde"
           }
         }
-      }
+      },
+      "shouldTranslate" : false
     },
     "Markdown Document" : {
       "localizations" : {
@@ -45,7 +46,8 @@
             "value" : ""
           }
         }
-      }
+      },
+      "shouldTranslate" : false
     },
     "Plain Text Document" : {
       "extractionState" : "stale",
@@ -70,6 +72,28 @@
         }
       }
     },
+    "TOML Document" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "TOML 書類"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "TOML 문서"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "TOML 文稿"
+          }
+        }
+      }
+    },
     "Text Document" : {
       "extractionState" : "stale",
       "localizations" : {
@@ -89,28 +113,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "文本文稿"
-          }
-        }
-      }
-    },
-    "TOML Document" : {
-      "localizations" : {
-        "ja" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "TOML 書類"
-          }
-        },
-        "ko" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "TOML 문서"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "TOML 文稿"
           }
         }
       }

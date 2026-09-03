@@ -88,8 +88,10 @@ struct EditorView: View {
         // (⌘⇧=), while Safari/TextEdit/Terminal all accept plain ⌘= for
         // zoom-in. An invisible button supplies the second key equivalent.
         .background {
-            Button("") {
+            Button {
                 fontSize = AppSettings.increasedFontSize(fontSize)
+            } label: {
+                Text(verbatim: "")   // not a localizable string
             }
             .keyboardShortcut("=", modifiers: .command)
             .buttonStyle(.plain)
