@@ -5,13 +5,13 @@
 // no manual renaming:
 //   swift gen_icon.swift ../Tilde/Assets.xcassets/AppIcon.appiconset
 //
-// Two size-specific treatments, per Apple's guidance to simplify small sizes:
-// - Standard (point size ≥ 128): medium-weight glyph on the paper gradient.
-// - Small (point size ≤ 32): heavier, larger glyph on a slightly darker
-//   plate so the tilde still reads at 16 px in Finder lists and Open With.
-// Both bake Apple's standard soft drop shadow into the artwork (the Big Sur
-// template look) so the plate's near-white top edge keeps its silhouette on
-// light backgrounds — Finder, Spotlight, the About panel.
+// One drawing, every size: the medium-weight "~" on the paper gradient,
+// rasterized as-is for each slot. No small-size variant — the 16 px icon is
+// the 1024 px icon, smaller (at 16 px the tilde is a soft two-pixel mark;
+// Retina's 32 px already shows the wave). The artwork bakes Apple's standard
+// soft drop shadow (the Big Sur template look) so the plate's near-white top
+// edge keeps its silhouette on light backgrounds — Finder, Spotlight, the
+// About panel.
 
 import AppKit
 
@@ -22,36 +22,13 @@ let canvas: CGFloat = 1024
 let plateRect = NSRect(x: 100, y: 100, width: 824, height: 824)
 let plateRadius: CGFloat = 185
 
-struct Treatment {
-    /// Font-rendered glyph (nil = hand-drawn wave, see drawIcon).
-    var glyphWeight: NSFont.Weight?
-    var glyphSize: CGFloat
-    var plateTop: NSColor
-    var plateBottom: NSColor
-}
-
 let inkColor = NSColor(calibratedRed: 0.11, green: 0.11, blue: 0.12, alpha: 1)
+let glyphWeight = NSFont.Weight.medium
+let glyphSize: CGFloat = 860
+let plateTop = NSColor(calibratedRed: 0.985, green: 0.984, blue: 0.980, alpha: 1)
+let plateBottom = NSColor(calibratedRed: 0.925, green: 0.922, blue: 0.913, alpha: 1)
 
-let standard = Treatment(
-    glyphWeight: .medium,
-    glyphSize: 860,
-    plateTop: NSColor(calibratedRed: 0.985, green: 0.984, blue: 0.980, alpha: 1),
-    plateBottom: NSColor(calibratedRed: 0.925, green: 0.922, blue: 0.913, alpha: 1)
-)
-
-// Small sizes: any font-rendered tilde collapses into a bar at 16 px — the
-// ink is only ~2 px tall and antialiasing eats the waveform. These sizes
-// draw the wave by hand instead (a stroked centerline with round caps, in
-// drawIcon), on a slightly darker plate, so crest and trough survive the
-// pixel grid and the smallest incarnation keeps the icon's personality.
-let small = Treatment(
-    glyphWeight: nil,
-    glyphSize: 0,
-    plateTop: NSColor(calibratedRed: 0.965, green: 0.963, blue: 0.958, alpha: 1),
-    plateBottom: NSColor(calibratedRed: 0.895, green: 0.892, blue: 0.882, alpha: 1)
-)
-
-func drawIcon(pixels: Int, treatment: Treatment) -> NSBitmapImageRep {
+func drawIcon(pixels: Int) -> NSBitmapImageRep {
     let rep = NSBitmapImageRep(
         bitmapDataPlanes: nil, pixelsWide: pixels, pixelsHigh: pixels,
         bitsPerSample: 8, samplesPerPixel: 4, hasAlpha: true, isPlanar: false,
@@ -77,69 +54,46 @@ func drawIcon(pixels: Int, treatment: Treatment) -> NSBitmapImageRep {
         color: CGColor(gray: 0, alpha: 0.28)
     )
     // Fill once (flat) to cast the shadow; the gradient is painted over it.
-    treatment.plateBottom.setFill()
+    plateBottom.setFill()
     plate.fill()
     cg.restoreGState()
 
     // Plate: soft paper gradient, top slightly lighter.
-    let gradient = NSGradient(starting: treatment.plateBottom, ending: treatment.plateTop)!
+    let gradient = NSGradient(starting: plateBottom, ending: plateTop)!
     gradient.draw(in: plate, angle: 90)
 
-    if let weight = treatment.glyphWeight {
-        // The ~ glyph, drawn as text and optically centered.
-        let font = NSFont.systemFont(ofSize: treatment.glyphSize, weight: weight)
-        let glyph = NSAttributedString(string: "~", attributes: [
-            .font: font,
-            .foregroundColor: inkColor,
-        ])
-        // Use the tight glyph bounds, not the font's line box, to center.
-        let line = CTLineCreateWithAttributedString(glyph)
-        let bounds = CTLineGetImageBounds(line, cg)
-        let x = plateRect.midX - bounds.midX
-        let y = plateRect.midY - bounds.midY
-        cg.textPosition = CGPoint(x: x, y: y)
-        CTLineDraw(line, cg)
-    } else {
-        // Hand-drawn wave: a single cubic centerline (crest left, trough
-        // right, tips flicking outward like the type glyph) stroked with
-        // round caps. Tuned so that at 16 px the stroke is ~2.3 px and the
-        // crest-to-trough swing ~3 px — a wave, not a bandage.
-        let waveWidth: CGFloat = 660
-        let path = NSBezierPath()
-        path.move(to: NSPoint(x: plateRect.midX - waveWidth / 2, y: plateRect.midY - 66))
-        path.curve(
-            to: NSPoint(x: plateRect.midX + waveWidth / 2, y: plateRect.midY + 66),
-            controlPoint1: NSPoint(x: plateRect.midX - waveWidth / 6, y: plateRect.midY + 240),
-            controlPoint2: NSPoint(x: plateRect.midX + waveWidth / 6, y: plateRect.midY - 240)
-        )
-        path.lineWidth = 138
-        path.lineCapStyle = .round
-        inkColor.set()
-        path.stroke()
-    }
+    // The ~ glyph, drawn as text and optically centered.
+    let font = NSFont.systemFont(ofSize: glyphSize, weight: glyphWeight)
+    let glyph = NSAttributedString(string: "~", attributes: [
+        .font: font,
+        .foregroundColor: inkColor,
+    ])
+    // Use the tight glyph bounds, not the font's line box, to center.
+    let line = CTLineCreateWithAttributedString(glyph)
+    let bounds = CTLineGetImageBounds(line, cg)
+    cg.textPosition = CGPoint(x: plateRect.midX - bounds.midX, y: plateRect.midY - bounds.midY)
+    CTLineDraw(line, cg)
 
     NSGraphicsContext.restoreGraphicsState()
     return rep
 }
 
-// (filename, pixel size, treatment) — @2x slots use the artwork of their
-// POINT size: icon_16@2x is seen at 16 pt on Retina, so it gets the small
-// treatment drawn at 32 px.
-let slots: [(String, Int, Treatment)] = [
-    ("icon_16.png", 16, small),
-    ("icon_16@2x.png", 32, small),
-    ("icon_32.png", 32, small),
-    ("icon_32@2x.png", 64, small),
-    ("icon_128.png", 128, standard),
-    ("icon_128@2x.png", 256, standard),
-    ("icon_256.png", 256, standard),
-    ("icon_256@2x.png", 512, standard),
-    ("icon_512.png", 512, standard),
-    ("icon_512@2x.png", 1024, standard),
+// (filename, pixel size)
+let slots: [(String, Int)] = [
+    ("icon_16.png", 16),
+    ("icon_16@2x.png", 32),
+    ("icon_32.png", 32),
+    ("icon_32@2x.png", 64),
+    ("icon_128.png", 128),
+    ("icon_128@2x.png", 256),
+    ("icon_256.png", 256),
+    ("icon_256@2x.png", 512),
+    ("icon_512.png", 512),
+    ("icon_512@2x.png", 1024),
 ]
 
-for (name, pixels, treatment) in slots {
-    let rep = drawIcon(pixels: pixels, treatment: treatment)
+for (name, pixels) in slots {
+    let rep = drawIcon(pixels: pixels)
     let data = rep.representation(using: .png, properties: [:])!
     let url = URL(fileURLWithPath: outputDir).appendingPathComponent(name)
     try! data.write(to: url)
