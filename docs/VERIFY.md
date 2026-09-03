@@ -10,8 +10,10 @@ runners, and the unsigned smoke bundle).
       (code already typechecks with `-default-isolation MainActor`; failures
       here would be project-config issues, not code)
 - [ ] Asset catalog compiles — AppIcon renders in Dock, Finder, and ⌘Tab
-- [ ] No warnings besides the known `NSTextStorage`-Sendable one in
-      TextDocument.swift
+- [ ] No warnings (the former `NSTextStorage`-Sendable one is resolved:
+      `TextDocument` is explicitly `nonisolated` to match SwiftUI's
+      background save path, with `nonisolated(unsafe)` narrowed to the
+      main-thread-only text storage — see the comment in TextDocument.swift)
 
 ## Sandbox (the smoke bundle runs unsandboxed — these are UNVERIFIED)
 

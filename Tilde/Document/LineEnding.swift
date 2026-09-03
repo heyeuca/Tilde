@@ -9,7 +9,7 @@ import Foundation
 ///
 /// The in-memory buffer is always LF-normalized; the original style is
 /// detected on load and restored on save.
-enum LineEnding: String {
+nonisolated enum LineEnding: String {
     case lf = "\n"
     case crlf = "\r\n"
     case cr = "\r"

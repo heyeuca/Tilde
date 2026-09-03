@@ -10,7 +10,8 @@ import AppKit
 import Combine
 import UniformTypeIdentifiers
 
-extension UTType {
+// Plain values, usable from the document's nonisolated save path.
+nonisolated extension UTType {
     /// Markdown is not a system-declared type; Tilde imports it (see Info.plist).
     static let markdown = UTType(importedAs: "net.daringfireball.markdown")
     /// TOML has no system UTI either; Tilde imports it so `.toml` files are
@@ -24,24 +25,43 @@ extension UTType {
 /// directly — keystrokes never copy the buffer through SwiftUI. The
 /// content is materialized as a `String` only when a save snapshot is
 /// taken (DESIGN.md §1).
-final class TextDocument: ReferenceFileDocument {
-    let textStorage: NSTextStorage
+///
+/// Isolation: `ReferenceFileDocument` is a `Sendable`, nonisolated protocol
+/// because SwiftUI snapshots the document and then serializes that snapshot
+/// (`fileWrapper`) on a background queue while the user keeps editing. So
+/// the class is `nonisolated` — the project's MainActor default would only
+/// be an illusion here, since the protocol witnesses run wherever SwiftUI
+/// calls them — and its metadata is immutable `let`s, safe to read from
+/// any thread. The one exception is `textStorage`, below.
+nonisolated final class TextDocument: ReferenceFileDocument {
+    /// The live buffer the editor's `NSTextView` displays.
+    ///
+    /// `nonisolated(unsafe)` is deliberate and narrow: `NSTextStorage` is an
+    /// AppKit object that carries no `Sendable` annotation, and the compiler
+    /// cannot see that every access is on the main thread — the text view's
+    /// edits, the views that read it, and `snapshot`, which SwiftUI takes
+    /// before handing the document to the background writer. Isolating the
+    /// property to the main actor instead would forbid initializing it here,
+    /// because `ReferenceFileDocument`'s initializers are nonisolated and
+    /// SwiftUI documents no thread for them. `fileWrapper`, the only witness
+    /// that does run off-main, never touches this property.
+    nonisolated(unsafe) let textStorage: NSTextStorage
 
     /// Captured at load, preserved on save.
-    private(set) var encoding: FileEncoding
-    private(set) var lineEnding: LineEnding
+    let encoding: FileEncoding
+    let lineEnding: LineEnding
 
     /// True when the file's bytes could not be decoded exactly (invalid
     /// UTF-8, BOM-less UTF-16 CJK, legacy encodings): the in-memory text
     /// contains substitution characters, so writing it back would corrupt
     /// the original. Such documents open read-only and refuse to save.
-    private(set) var isLossy: Bool
+    let isLossy: Bool
 
     /// Whether this document was OPENED as Markdown. The editor combines
     /// this with the live file URL (see `isMarkdown(openedAsMarkdown:fileURL:)`)
     /// so a document saved with a different extension switches modes
     /// without reopening.
-    private(set) var isMarkdown: Bool
+    let isMarkdown: Bool
 
     /// File extensions treated as Markdown (mirrors Info.plist's imported
     /// `net.daringfireball.markdown` declaration).
@@ -88,6 +108,8 @@ final class TextDocument: ReferenceFileDocument {
         isMarkdown = configuration.contentType.conforms(to: .markdown)
     }
 
+    /// Taken while editing is paused, before the background write; this is
+    /// the only place the buffer is read on the document's behalf.
     func snapshot(contentType: UTType) throws -> String {
         textStorage.string
     }

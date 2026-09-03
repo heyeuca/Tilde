@@ -13,7 +13,7 @@ import Foundation
 /// resort is the one path that CANNOT round-trip — it substitutes U+FFFD
 /// for undecodable bytes — so it is flagged `isLossy` and the document
 /// layer refuses to write such a file back over the original.
-struct FileEncoding: Equatable {
+nonisolated struct FileEncoding: Equatable {
     enum Base: Equatable {
         case utf8
         case utf16BigEndian
