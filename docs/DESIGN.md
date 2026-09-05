@@ -104,6 +104,32 @@ mechanism is the standard one, chosen so there is nothing to maintain:
   equivalent `.lproj/*.strings` into the bundle. Try a language with
   `open Tilde.app --args -AppleLanguages '(ko)'`.
 
+### Concurrency model
+
+The target uses `SWIFT_DEFAULT_ACTOR_ISOLATION = MainActor`: everything is
+main-actor unless it says otherwise, which is right for a document editor.
+Three kinds of code say otherwise, each for a reason the compiler can check
+— the whole app type-checks with zero diagnostics in Swift 6 language mode
+(`-swift-version 6`), which is how drift gets caught:
+
+- **`TextDocument` is `nonisolated`.** `ReferenceFileDocument` is a
+  `Sendable` protocol whose witnesses SwiftUI calls off the main thread
+  (the snapshot is serialized on a background queue). Its metadata is
+  immutable `let`s; the one main-thread-only member, the `NSTextStorage`
+  shared with the text view, is `nonisolated(unsafe)` with the reasoning
+  next to it. `FileEncoding`, `LineEnding`, and the `UTType` extension are
+  `nonisolated` pure value code the save path can call.
+- **The Reader's renderer is `nonisolated`.** `MarkdownRenderer`,
+  `CodeHighlighter`, and `EditorTheme` (fonts and colors are `Sendable`)
+  are pure functions of their input; `ReaderView` runs them on a global
+  queue for documents over the sync threshold, and the isolation makes that
+  hop legal rather than merely unchecked.
+- **Stylers have isolated conformances.** `MarkdownStyler` and
+  `CodeSyntaxStyler` mutate the live buffer from `NSTextStorageDelegate`
+  callbacks AppKit delivers on the main thread, so they conform as
+  `@MainActor SyntaxHighlighting` (the inheriting conformance has to agree
+  with the delegate one).
+
 ---
 
 ## 3. Document Layer

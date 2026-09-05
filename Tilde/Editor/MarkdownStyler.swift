@@ -16,7 +16,7 @@ import AppKit
 /// cross-line state; fence-line positions are cached and updated
 /// incrementally (shift by the edit delta, rescan only the edited
 /// paragraphs), so a keystroke never scans the whole document.
-final class MarkdownStyler: NSObject, SyntaxHighlighting {
+final class MarkdownStyler: NSObject, @MainActor SyntaxHighlighting {
 
     /// Current body font size; heading/code sizes derive from it.
     var fontSize: CGFloat = EditorTheme.defaultFontSize
@@ -237,14 +237,19 @@ final class MarkdownStyler: NSObject, SyntaxHighlighting {
         // Empty lines swap lineSpacing for paragraphSpacing: the insertion
         // caret spans the line box including lineSpacing (oversized caret),
         // while paragraphSpacing sits outside the line box — same uniform
-        // row rhythm, text-height caret.
-        if textOnly.length == 0, !insideFence {
+        // row rhythm, text-height caret. Inside a fence the empty line also
+        // keeps the code-block marker, or the unified background would
+        // break at every blank line in a listing.
+        if textOnly.length == 0 {
             let font = EditorTheme.bodyFont(monospaced: usesMonospacedBody, size: fontSize)
             storage.addAttribute(
                 .paragraphStyle,
                 value: EditorTheme.emptyLineParagraphStyle(for: font),
                 range: line
             )
+            if insideFence, stylesMarkdown {
+                storage.addAttribute(EditorTheme.codeBlockMarker, value: true, range: line)
+            }
             return
         }
 

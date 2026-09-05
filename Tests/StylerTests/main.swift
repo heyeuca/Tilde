@@ -187,6 +187,27 @@ do {
     expect(isMono(font(s, at: at)), "unclosed fence styles to EOF")
 }
 
+// MARK: - Empty lines (caret height)
+
+do {
+    // Empty lines carry their rhythm as paragraphSpacingBefore, never as
+    // lineSpacing — lineSpacing is swallowed into an empty line's line box
+    // and makes the caret 1.5× tall. Inside a fence too (it used to keep the
+    // default style there), while still carrying the code-block marker so
+    // the unified background stays continuous across blank lines.
+    let text = "alpha\n\nbeta\n```\ncode1\n\ncode2\n```\n"
+    let s = styled(text)
+    let ns = text as NSString
+    func style(_ at: Int) -> NSParagraphStyle? { s.attribute(.paragraphStyle, at: at, effectiveRange: nil) as? NSParagraphStyle }
+    let outside = ns.range(of: "alpha\n").location + 6      // the empty line after alpha
+    let inside = ns.range(of: "code1\n").location + 6       // the empty line after code1
+    expect(style(outside)?.lineSpacing == 0 && (style(outside)?.paragraphSpacingBefore ?? 0) > 0, "empty line outside fence uses paragraphSpacingBefore")
+    expect(style(inside)?.lineSpacing == 0 && (style(inside)?.paragraphSpacingBefore ?? 0) > 0, "empty line inside fence uses paragraphSpacingBefore")
+    expect(style(inside)?.paragraphSpacingBefore == style(outside)?.paragraphSpacingBefore, "fence and body empty lines share one rhythm")
+    expect(s.attribute(EditorTheme.codeBlockMarker, at: inside, effectiveRange: nil) != nil, "empty line inside fence keeps the code-block marker")
+    expect(s.attribute(EditorTheme.codeBlockMarker, at: outside, effectiveRange: nil) == nil, "empty line outside fence has no code-block marker")
+}
+
 // MARK: - Incremental restyle via delegate
 
 do {

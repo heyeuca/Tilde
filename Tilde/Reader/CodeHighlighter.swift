@@ -13,7 +13,7 @@ import AppKit
 /// the four token kinds every language shares — comments, strings, numbers,
 /// and (for known languages) keywords — via a single left-to-right scan.
 /// Anything it doesn't recognize simply stays default-colored.
-struct CodeHighlighter {
+nonisolated struct CodeHighlighter {
     struct Span {
         let range: NSRange
         let color: NSColor

@@ -26,7 +26,7 @@ Everything here is verification and packaging, not features.
 | Full `xcodebuild` + sandbox verification | Xcode device | run docs/VERIFY.md top to bottom |
 | Distribution decision | ✅ DECIDED | Both channels: signed+notarized DMG via GitHub Releases, and the App Store (first submission manual via Xcode Organizer). Sandbox already on for both |
 | GitHub release pipeline | ✅ BUILT (awaiting secrets) | `release.yml`: tag push → build → Developer ID sign → `scripts/make_dmg.sh` → sign DMG → notarize → staple → GitHub release. Blocked only on the 6 repo secrets — setup steps in docs/RELEASING.md. Test first via workflow_dispatch (publishes an artifact, not a release) |
-| CI on pull requests | ✅ DONE | `.github/workflows/ci.yml`: Tests job runs `Tests/run.sh` (467 assertions, 7 suites); Build job runs a real `xcodebuild` Release build (unsigned) and uploads a `Tilde-unsigned` .app artifact. Already caught its first real bug (missing `import Combine` under MemberImportVisibility) |
+| CI on pull requests | ✅ DONE | `.github/workflows/ci.yml`: Tests job runs `Tests/run.sh` (472 assertions, 7 suites); Build job runs a real `xcodebuild` Release build (unsigned) and uploads a `Tilde-unsigned` .app artifact. Already caught its first real bug (missing `import Combine` under MemberImportVisibility) |
 | Test suites live in the repo | ✅ DONE | `Tests/` — plain-executable suites + `Tests/run.sh`; no XCTest, so they run with Command Line Tools alone (and on CI). XCTest-target migration no longer needed |
 | Screenshots for README | — | light/dark editor shots; add to repo (public) |
 | Open-source hygiene | — | CONTRIBUTING.md, issue templates. Keep them one screen, in Tilde's voice |
@@ -135,8 +135,12 @@ the Xcode device since the dev machine can't run sandboxed builds.
 
 ## Known small debts (fix opportunistically)
 
-- Empty line inside a code fence still shows the taller caret
-  (lineSpacing swallowed into the line box; rare enough to defer)
+None open (2026-09). The last two — the taller caret on an empty line
+inside a code fence, and the `NSTextStorage` Sendable warning — are fixed,
+and the whole app now type-checks clean in Swift 6 language mode
+(`-swift-version 6`) as well as the shipping Swift 5 mode, so flipping
+`SWIFT_VERSION` is a one-line change whenever it seems worth it. The
+concurrency model that makes this hold is written down in DESIGN.md §2.
 
 ## Not doing (reaffirmed)
 

@@ -8,6 +8,12 @@ import AppKit
 /// A text-storage delegate that keeps an editor's buffer styled.
 /// Both the Markdown styler and the code highlighter conform, so the
 /// editor can hold whichever fits the document.
+///
+/// Conformers write `@MainActor SyntaxHighlighting`: stylers mutate the
+/// editor's live `NSTextStorage` from delegate callbacks AppKit delivers on
+/// the main thread, so their `NSTextStorageDelegate` conformance is
+/// main-actor-isolated, and Swift 6 requires this inheriting conformance
+/// to say the same.
 protocol SyntaxHighlighting: NSTextStorageDelegate {
     var fontSize: CGFloat { get set }
     func restyleAll(_ textStorage: NSTextStorage)
@@ -21,7 +27,7 @@ protocol SyntaxHighlighting: NSTextStorageDelegate {
 /// Styling is attribute-only and per-line — JSON/YAML tokens don't span
 /// lines in this lightweight model — so edits restyle just their own
 /// paragraphs.
-final class CodeSyntaxStyler: NSObject, SyntaxHighlighting {
+final class CodeSyntaxStyler: NSObject, @MainActor SyntaxHighlighting {
     enum Language: Equatable {
         case json
         case yaml

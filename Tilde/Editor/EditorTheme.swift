@@ -9,7 +9,7 @@ import AppKit
 ///
 /// Colors are always macOS semantic colors; Tilde has no theme system.
 /// Font-producing functions take the user's body size (⌘+/⌘-) as `size`.
-enum EditorTheme {
+nonisolated enum EditorTheme {
     /// Default body font size in points.
     static let defaultFontSize: CGFloat = 14
 

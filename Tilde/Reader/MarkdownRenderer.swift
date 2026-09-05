@@ -18,7 +18,7 @@ import AppKit
 /// Tables and images are handled in later milestones; this milestone covers
 /// paragraphs, headings, lists (including nesting), blockquotes, code
 /// blocks, thematic breaks, links, and inline styles.
-struct MarkdownRenderer {
+nonisolated struct MarkdownRenderer {
     var fontSize: CGFloat = EditorTheme.defaultFontSize
 
     /// Directory of the document being previewed, for resolving relative
@@ -504,7 +504,7 @@ struct MarkdownRenderer {
             resolved = url
         }
 
-        if let image = NSImage(contentsOf: resolved) {
+        if resolved.isFileURL, let image = NSImage(contentsOf: resolved) {
             let natural = image.size
             let width = min(natural.width, contentWidth)
             let scale = natural.width > 0 ? width / natural.width : 1
