@@ -12,10 +12,10 @@ import AppKit
 /// rules; it is deliberately not a full Markdown parser (PRODUCT.md §27).
 ///
 /// Performance model (PRODUCT.md §28): on each edit only the touched
-/// paragraphs are restyled. Fenced code blocks are the one piece of
-/// cross-line state; fence-line positions are cached and updated
-/// incrementally (shift by the edit delta, rescan only the edited
-/// paragraphs), so a keystroke never scans the whole document.
+/// paragraphs are restyled. Fenced code blocks and the leading frontmatter
+/// block are the only cross-line state; both are cached and updated
+/// incrementally (fence lines shift by the edit delta and only the edited
+/// paragraphs are rescanned), so a keystroke never scans the whole document.
 final class MarkdownStyler: NSObject, @MainActor SyntaxHighlighting {
 
     /// Current body font size; heading/code sizes derive from it.
@@ -31,6 +31,15 @@ final class MarkdownStyler: NSObject, @MainActor SyntaxHighlighting {
     /// Sorted ranges of ``` fence-marker lines, kept in sync across edits.
     private var fenceCache: [NSRange]?
     private var cachedLength = 0
+
+    /// How many cached fence lines lie past the frontmatter at the last
+    /// restyle; a change means code regions after the edit re-paired.
+    private var activeFenceCount: Int?
+
+    /// Line 1 through the first closing fence (valid frontmatter or not)
+    /// and the block it yields when valid; nil until the first scan. Shares
+    /// `cachedLength` with the fence cache — both update on the same passes.
+    private var frontmatterCache: (candidate: NSRange?, block: NSRange?)?
 
     // MARK: - NSTextStorageDelegate
 
@@ -49,6 +58,8 @@ final class MarkdownStyler: NSObject, @MainActor SyntaxHighlighting {
 
     func restyleAll(_ textStorage: NSTextStorage) {
         fenceCache = nil
+        frontmatterCache = nil
+        activeFenceCount = nil
         restyle(in: textStorage, editedRange: nil, delta: 0)
     }
 
@@ -58,6 +69,8 @@ final class MarkdownStyler: NSObject, @MainActor SyntaxHighlighting {
         guard string.length > 0 else {
             fenceCache = []
             cachedLength = 0
+            frontmatterCache = (nil, nil)
+            activeFenceCount = 0
             return
         }
 
@@ -71,16 +84,36 @@ final class MarkdownStyler: NSObject, @MainActor SyntaxHighlighting {
             window = string.paragraphRange(for: probe)
         }
 
-        let previousFenceCount = fenceCache?.count
+        let lengthMatches = cachedLength + delta == string.length
+        let previousFrontmatter = frontmatterCache?.block
+        let frontmatter = stylesMarkdown ? updatedFrontmatter(string: string, window: window, lengthMatches: lengthMatches) : nil
+
+        let frontmatterEnd = frontmatter.map(NSMaxRange) ?? 0
+
+        let previousFenceCount = activeFenceCount
         let fences = stylesMarkdown ? updatedFenceLines(string: string, window: window, delta: delta) : []
-        let regions = Self.fenceRegions(fences: fences, totalLength: string.length)
+        // A ``` line inside frontmatter is metadata, not a code fence.
+        let activeFences = fences.drop { $0.location < frontmatterEnd }
+        activeFenceCount = activeFences.count
+        let regions = Self.fenceRegions(fences: Array(activeFences), totalLength: string.length)
 
         var styleRange: NSRange
-        if let window, !stylesMarkdown || previousFenceCount == fences.count {
+        if let window, !stylesMarkdown || previousFenceCount == activeFences.count {
             styleRange = window
             // Edits inside a fence restyle the whole fenced region.
             for region in regions where NSIntersectionRange(region, styleRange).length > 0 {
                 styleRange = NSUnionRange(styleRange, region)
+            }
+            // Lines between the old and the new end of the frontmatter block
+            // switched between metadata and body. Pre-edit offsets past the
+            // edit shift by delta; an old end inside the edit is covered by
+            // the window already.
+            let oldEnd = previousFrontmatter.map { block in
+                NSMaxRange(block) <= window.location ? NSMaxRange(block) : max(NSMaxRange(block) + delta, NSMaxRange(window))
+            } ?? 0
+            if oldEnd != frontmatterEnd {
+                let low = min(oldEnd, frontmatterEnd)
+                styleRange = NSUnionRange(styleRange, NSRange(location: low, length: max(oldEnd, frontmatterEnd) - low))
             }
         } else {
             // Fence opened/closed (or first pass): everything after the
@@ -95,8 +128,38 @@ final class MarkdownStyler: NSObject, @MainActor SyntaxHighlighting {
         // there is not allowed.
         let batch = editedRange == nil
         if batch { textStorage.beginEditing() }
-        applyStyles(in: styleRange, string: string, regions: regions, to: textStorage)
+        applyStyles(in: styleRange, string: string, regions: regions, frontmatterEnd: frontmatterEnd, to: textStorage)
         if batch { textStorage.endEditing() }
+    }
+
+    // MARK: - Frontmatter
+
+    /// Brings the cached frontmatter candidate up to date for the given
+    /// edit and returns the valid block, if any.
+    ///
+    /// An edit past the candidate cannot change it. With no candidate, only
+    /// line 1 can open one, and when line 1 opens a block that never closed,
+    /// the only new closing fence can be in the edited paragraphs. Edits on
+    /// line 1 or inside the candidate rescan from the top — to EOF when
+    /// line 1 is an unclosed `---` rule (about 10 ms per 4 MB).
+    private func updatedFrontmatter(string: NSString, window: NSRange?, lengthMatches: Bool) -> NSRange? {
+        let candidate: NSRange?
+        if let cache = frontmatterCache, let window, window.location > 0, lengthMatches {
+            if let previous = cache.candidate {
+                if window.location >= NSMaxRange(previous) { return cache.block }
+                candidate = MarkdownFrontmatter.candidate(in: string)
+            } else if MarkdownFrontmatter.openingLine(in: string) != nil {
+                candidate = MarkdownFrontmatter.closingLine(in: string, within: window)
+                    .map { NSRange(location: 0, length: NSMaxRange($0)) }
+            } else {
+                candidate = nil
+            }
+        } else {
+            candidate = MarkdownFrontmatter.candidate(in: string)
+        }
+        let block = candidate.flatMap { MarkdownFrontmatter.isMetadata($0, in: string) ? $0 : nil }
+        frontmatterCache = (candidate, block)
+        return block
     }
 
     // MARK: - Fences
@@ -182,7 +245,7 @@ final class MarkdownStyler: NSObject, @MainActor SyntaxHighlighting {
 
     // MARK: - Line walk
 
-    private func applyStyles(in range: NSRange, string: NSString, regions: [NSRange], to storage: NSTextStorage) {
+    private func applyStyles(in range: NSRange, string: NSString, regions: [NSRange], frontmatterEnd: Int, to storage: NSTextStorage) {
         storage.setAttributes(EditorTheme.bodyAttributes(monospaced: usesMonospacedBody, size: fontSize), range: range)
 
         // Regions and lines are both sorted: walk them together instead of
@@ -197,7 +260,7 @@ final class MarkdownStyler: NSObject, @MainActor SyntaxHighlighting {
             }
             let insideFence = regionIndex < regions.count
                 && NSLocationInRange(line.location, regions[regionIndex])
-            styleLine(line, string: string, insideFence: insideFence, in: storage)
+            styleLine(line, string: string, insideFence: insideFence, frontmatterEnd: frontmatterEnd, in: storage)
             guard NSMaxRange(line) > location else { break }
             location = NSMaxRange(line)
         }
@@ -224,6 +287,7 @@ final class MarkdownStyler: NSObject, @MainActor SyntaxHighlighting {
         _ line: NSRange,
         string: NSString,
         insideFence: Bool,
+        frontmatterEnd: Int,
         in storage: NSTextStorage
     ) {
         // Fonts must not spill onto the trailing newline: the caret on the
@@ -254,6 +318,19 @@ final class MarkdownStyler: NSObject, @MainActor SyntaxHighlighting {
         }
 
         guard stylesMarkdown else { return }
+
+        // Frontmatter recedes like a config header: dim fences (never a
+        // horizontal rule), quiet metadata, and no Markdown rules inside —
+        // YAML values like `a_b_c` or `- item` are not emphasis or lists.
+        if line.location < frontmatterEnd {
+            let isFence = line.location == 0 || NSMaxRange(line) == frontmatterEnd
+            storage.addAttribute(
+                .foregroundColor,
+                value: isFence ? EditorTheme.markerColor : EditorTheme.quoteColor,
+                range: line
+            )
+            return
+        }
 
         // Code block interior and fence marker lines. The unified background
         // is drawn by the text view from this marker; a per-character
