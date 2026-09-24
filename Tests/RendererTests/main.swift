@@ -249,6 +249,15 @@ func hasAttachment(_ s: NSAttributedString) -> Bool {
     return found
 }
 
+/// The unfold links on "more" labels, in order.
+func moreLinks(_ s: NSAttributedString) -> [URL] {
+    var urls: [URL] = []
+    s.enumerateAttribute(.link, in: NSRange(location: 0, length: s.length)) { value, range, _ in
+        if let url = value as? URL, (s.string as NSString).substring(with: range) == "more" { urls.append(url) }
+    }
+    return urls
+}
+
 func attachmentCount(_ s: NSAttributedString) -> Int {
     var count = 0
     s.enumerateAttribute(.attachment, in: NSRange(location: 0, length: s.length)) { value, _, _ in
@@ -328,7 +337,7 @@ do {
     let rawAt = offset(of: "image: a.png", in: s)
     expect(isMono(font(s, at: rawAt)) && color(s, at: rawAt) == EditorTheme.quoteColor, "frontmatter header: raw value in the code face, quiet")
     let long = render("---\nk:\n" + (1...8).map { "  n\($0): v" }.joined(separator: "\n") + "\n---\n")
-    expect(long.string == "k\tn1: v\nn2: v\nn3: v…\n", "frontmatter header: a raw value shows a few lines at most (\(long.string.debugDescription))")
+    expect(long.string == "k\tn1: v\nn2: v\nn3: v… more\n", "frontmatter header: a raw value shows a few lines at most (\(long.string.debugDescription))")
     // Lines that belong to no key: the whole block, raw, above the content.
     let stray = render("---\n  stray\nk: v\n---\n# Heading\n")
     let at = offset(of: "stray", in: stray)
@@ -337,27 +346,45 @@ do {
 }
 
 do {
-    // Long values are cut — three lines or 240 characters, "…" at the cut —
-    // so one description can't fill the screen. Each cut value is a quiet
-    // link that shows just that value whole.
+    // Long values are cut — three lines or 240 characters — so one
+    // description can't fill the screen. A quiet "more" after each cut
+    // shows just that value whole; the value itself stays plain text.
     let words = String(repeating: "word ", count: 80)
     let source = "---\ndesc: \(words)\nlines: |\n  one\n  two\n  three\n  four\n  five\n---\nbody\n"
     let s = render(source)
     let descAt = offset(of: "word", in: s)
     let descLine = (s.string as NSString).lineRange(for: NSRange(location: descAt, length: 0))
     let desc = (s.string as NSString).substring(with: NSRange(location: descAt, length: NSMaxRange(descLine) - descAt - 1))
-    expect(desc.count <= MarkdownRenderer.metadataValueCharacterLimit + 1 && desc.hasSuffix("word…"), "frontmatter header: a long value is cut between words (\(desc.count) chars)")
-    expect(s.attribute(.link, at: descAt, effectiveRange: nil) as? URL == MarkdownRenderer.MetadataUnfold.value(0).link, "frontmatter header: a cut value links to unfolding itself")
-    expect(s.attribute(.link, at: offset(of: "one", in: s), effectiveRange: nil) as? URL == MarkdownRenderer.MetadataUnfold.value(1).link, "frontmatter header: each cut value names its own entry")
-    expect(color(s, at: descAt) == NSColor.labelColor && s.attribute(.underlineStyle, at: descAt, effectiveRange: nil) == nil, "frontmatter header: a cut value keeps its quiet look")
-    expect(s.string.contains("one\ntwo\nthree…\n") && !s.string.contains("four"), "frontmatter header: a multi-line value is cut to three lines")
+    expect(desc.count <= MarkdownRenderer.metadataValueCharacterLimit + 6 && desc.hasSuffix("word… more"), "frontmatter header: a long value is cut between words, then \"more\" (\(desc.count) chars)")
+    expect(s.attribute(.link, at: descAt, effectiveRange: nil) == nil && color(s, at: descAt) == NSColor.labelColor, "frontmatter header: the cut value itself stays plain text")
+    expect(moreLinks(s) == [MarkdownRenderer.MetadataUnfold.value(0).link, MarkdownRenderer.MetadataUnfold.value(1).link], "frontmatter header: each \"more\" unfolds its own value")
+    let moreAt = offset(of: "word… more", in: s) + 6
+    expect(color(s, at: moreAt) == EditorTheme.quoteColor && s.attribute(.underlineStyle, at: moreAt, effectiveRange: nil) == nil, "frontmatter header: \"more\" is as quiet as \"+N more\"")
+    expect(s.string.contains("one\ntwo\nthree… more\n") && !s.string.contains("four"), "frontmatter header: a multi-line value is cut to three lines")
     let bodyLineAt = offset(of: "body", in: s)
     expect(s.attribute(.link, at: bodyLineAt, effectiveRange: nil) == nil, "frontmatter header: the body is untouched by the cut links")
     let one = MarkdownRenderer(wholeMetadataValues: [1]).render(source)
-    expect(one.string.contains("five") && one.string.contains("word…"), "frontmatter header: unfolding one value leaves the others cut")
+    expect(one.string.contains("five") && one.string.contains("word… more") && moreLinks(one) == [MarkdownRenderer.MetadataUnfold.value(0).link], "frontmatter header: unfolding one value leaves the others cut")
     let both = MarkdownRenderer(wholeMetadataValues: [0, 1]).render(source)
-    expect(both.string.contains("five") && !both.string.contains("…"), "frontmatter header: unfolded values show whole")
+    expect(both.string.contains("five") && !both.string.contains("…") && moreLinks(both).isEmpty, "frontmatter header: unfolded values show whole, no \"more\"")
     expect(MarkdownRenderer.cutValue("short") == nil, "frontmatter header: a short value isn't cut")
+}
+
+do {
+    // Where a cut lands: at a sentence end when one is near the limit (no
+    // ellipsis, so "." never runs into "…"), otherwise between words with
+    // trailing punctuation dropped before the "…".
+    let sentences = String(repeating: "Use this agent when the user asks to review a pull request. ", count: 8)
+    let atSentence = MarkdownRenderer.cutValue(sentences) ?? ""
+    expect(atSentence.hasSuffix("request.") && !atSentence.contains("…"), "frontmatter cut: ends at a sentence, no ellipsis (\(atSentence.suffix(20).debugDescription))")
+    let commas = MarkdownRenderer.cutValue(String(repeating: "alpha, ", count: 60)) ?? ""
+    expect(commas.hasSuffix("alpha…"), "frontmatter cut: trailing punctuation dropped before the ellipsis (\(commas.suffix(12).debugDescription))")
+    let versions = MarkdownRenderer.cutValue(String(repeating: "see v1.2 and example.com ", count: 20)) ?? ""
+    expect(versions.hasSuffix("…") && !versions.hasSuffix(".…"), "frontmatter cut: a dot inside a word isn't a sentence end (\(versions.suffix(16).debugDescription))")
+    expect(MarkdownRenderer.cutValue("One.\nTwo.\nThree.\nFour.") == "One.\nTwo.\nThree.", "frontmatter cut: lines cut after a finished sentence need no ellipsis")
+    expect(MarkdownRenderer.cutValue("one\ntwo:\nthree,\nfour") == "one\ntwo:\nthree…", "frontmatter cut: a line cut mid-thought gets the ellipsis")
+    let cjk = MarkdownRenderer.cutValue(String(repeating: "문장이 끝났습니다。", count: 40)) ?? ""
+    expect(cjk.hasSuffix("。") && !cjk.contains("…"), "frontmatter cut: a CJK full stop counts as a sentence end")
 }
 
 do {
@@ -391,7 +418,7 @@ do {
     // desc is entry 1 (after title) and the first row; late is entry 8, folded.
     let source = "---\ntitle: T\ndesc: \(long)\n" + (2...7).map { "k\($0): v\($0)" }.joined(separator: "\n") + "\nlate: \(long)\n---\n# Body\n\ntext\n"
     let rows = MarkdownRenderer(showsAllMetadataRows: true).render(source)
-    expect(rows.string.contains("late\t") && !rows.string.contains("more") && rows.string.contains("long…"), "frontmatter header: \"+N more\" shows the rows, their long values still cut")
+    expect(rows.string.contains("late\t") && !rows.string.contains("+3 more") && rows.string.contains("long… more"), "frontmatter header: \"+N more\" shows the rows, their long values still cut")
     let value = MarkdownRenderer(wholeMetadataValues: [1]).render(source)
     expect(value.string.contains("+3 more") && !value.string.contains("late\t"), "frontmatter header: a cut value unfolds without the folded rows")
     expect(!(value.string.components(separatedBy: "\n").first { $0.hasPrefix("desc\t") } ?? "").contains("…"), "frontmatter header: the clicked value shows whole")

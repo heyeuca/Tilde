@@ -184,9 +184,9 @@ nonisolated struct MarkdownRenderer {
     /// shows the other rows.
     static let metadataRowLimit = 5
 
-    /// A value longer than this many lines or characters is cut, "…"
-    /// marking the cut, so one long description can't fill the screen
-    /// either. Clicking the cut value shows that value whole.
+    /// A value longer than this many lines or characters is cut, so one
+    /// long description can't fill the screen either; a quiet "more" after
+    /// the cut shows that value whole.
     static let metadataValueLineLimit = 3
     static let metadataValueCharacterLimit = 240
 
@@ -252,12 +252,10 @@ nonisolated struct MarkdownRenderer {
             let cut = wholeMetadataValues.contains(index) ? nil : Self.cutValue(value)
             if let cut { value = cut }
             let lines = value.split(separator: "\n", omittingEmptySubsequences: false)
-            var valueAttributes: [NSAttributedString.Key: Any] = [
+            let valueAttributes: [NSAttributedString.Key: Any] = [
                 .font: row.isRaw ? rawFont : font,
                 .foregroundColor: row.isRaw ? EditorTheme.quoteColor : NSColor.labelColor,
             ]
-            // A cut value is a quiet link that shows just that value whole.
-            if cut != nil { valueAttributes[.link] = MetadataUnfold.value(index).link }
 
             let rowStart = result.length
             result.append(NSAttributedString(string: row.key + "\t", attributes: [
@@ -267,6 +265,17 @@ nonisolated struct MarkdownRenderer {
             for (lineIndex, line) in lines.enumerated() {
                 let lineStart = lineIndex == 0 ? rowStart : result.length
                 result.append(NSAttributedString(string: String(line), attributes: valueAttributes))
+                if cut != nil, lineIndex == lines.count - 1 {
+                    // After a cut, a quiet "more" — the same gray and word
+                    // as "+N more" — is the one place to click; the value
+                    // itself stays plain text.
+                    result.append(NSAttributedString(string: " ", attributes: [.font: font]))
+                    result.append(NSAttributedString(string: String(localized: "more"), attributes: [
+                        .font: font,
+                        .foregroundColor: EditorTheme.quoteColor,
+                        .link: MetadataUnfold.value(index).link,
+                    ]))
+                }
                 result.append(NSAttributedString(string: "\n", attributes: [.font: font]))
                 result.addAttribute(
                     .paragraphStyle,
@@ -289,23 +298,44 @@ nonisolated struct MarkdownRenderer {
         }
     }
 
-    /// `value` cut to a few lines and characters with "…" at the cut,
-    /// ending between words when a space is near; nil when it fits.
+    /// `value` cut to a few lines and characters, or nil when it fits. A
+    /// cut ends at a sentence end when one is near the limit — no ellipsis
+    /// needed — and otherwise between words, trailing punctuation dropped
+    /// before the "…" so a period never runs into it ("....").
     static func cutValue(_ value: String) -> String? {
         var lines = value.split(separator: "\n", omittingEmptySubsequences: false)
         var cut = lines.count > metadataValueLineLimit
         if cut { lines = Array(lines.prefix(metadataValueLineLimit)) }
         var text = lines.joined(separator: "\n")
         if text.count > metadataValueCharacterLimit {
-            var end = text.index(text.startIndex, offsetBy: metadataValueCharacterLimit)
-            if let space = text[..<end].lastIndex(where: { $0 == " " || $0 == "\n" }),
-               text.distance(from: space, to: end) < 30 {
-                end = space
+            let limit = text.index(text.startIndex, offsetBy: metadataValueCharacterLimit)
+            let near = text.index(text.startIndex, offsetBy: metadataValueCharacterLimit * 3 / 5)
+            if let sentenceEnd = text[near..<limit].indices.last(where: { isSentenceEnd(at: $0, in: text) }) {
+                text = String(text[...sentenceEnd])
+            } else {
+                var end = limit
+                if let space = text[..<limit].lastIndex(where: { $0 == " " || $0 == "\n" }),
+                   text.distance(from: space, to: limit) < 30 {
+                    end = space
+                }
+                text = String(text[..<end])
             }
-            text = String(text[..<end])
             cut = true
         }
-        return cut ? text.trimmingCharacters(in: .whitespaces) + "…" : nil
+        guard cut else { return nil }
+        text = text.trimmingCharacters(in: .whitespaces)
+        if let last = text.indices.last, isSentenceEnd(at: last, in: text) { return text }
+        return text.trimmingCharacters(in: CharacterSet(charactersIn: ".,;:、，；：").union(.whitespaces)) + "…"
+    }
+
+    /// `.`, `!`, or `?` followed by whitespace or the end — so "v1.2" and
+    /// "example.com" don't count — or a CJK full stop, which needs no space.
+    private static func isSentenceEnd(at index: String.Index, in text: String) -> Bool {
+        let character = text[index]
+        if "。！？".contains(character) { return true }
+        guard ".!?".contains(character) else { return false }
+        let next = text.index(after: index)
+        return next == text.endIndex || text[next].isWhitespace
     }
 
     /// `text` as a fenced YAML listing, with a fence longer than any
