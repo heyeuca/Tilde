@@ -68,6 +68,17 @@ runners, and the unsigned smoke bundle).
       editor — typing works without a click)
 - [ ] Command disabled for plain-text (.txt) documents
 - [ ] Headings, lists, quotes, code blocks, HR, links, inline styles render
+- [ ] Frontmatter: a post with `title:`, more than six other keys, and a
+      long `description:` shows the title as the top H1, aligned key–value
+      rows, a hairline, then the body. "+N more" and a value's "more"
+      unfold in place, each on its own; hovering them shows the pointing
+      hand while the text stays gray, and VoiceOver reads them as links.
+      The editor shows the same block with dim fences and no Markdown
+      styling inside (header layout and the unfolded rebuild are covered
+      by `RendererTests`; the click path, real hover, and VoiceOver are
+      not)
+- [ ] A document that opens with a `---` rule and uses later `---` rules as
+      chapter breaks renders every chapter, with no header
 - [ ] Relative links: clicking `[x](other.md)` opens the file in Tilde
       **under the sandbox** (expected to work only for already-readable
       paths — on denial the click just beeps); `#fragment` links scroll to
