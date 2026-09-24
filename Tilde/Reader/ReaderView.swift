@@ -66,6 +66,11 @@ struct ReaderView: NSViewRepresentable {
         textView.maxSize = NSSize(width: CGFloat.greatestFiniteMagnitude, height: CGFloat.greatestFiniteMagnitude)
         // Links open in the user's browser; nothing is editable.
         textView.isAutomaticLinkDetectionEnabled = false
+        // Links style themselves in the renderer — link-colored and
+        // underlined in the text, but a quiet "+N more" in the metadata
+        // header — so the view adds only the pointing hand. The `.link`
+        // attribute is what VoiceOver announces, whatever it looks like.
+        textView.linkTextAttributes = [.cursor: NSCursor.pointingHand]
 
         let scrollView = NSScrollView()
         scrollView.hasVerticalScroller = true
@@ -121,12 +126,16 @@ struct ReaderView: NSViewRepresentable {
 
     final class Coordinator: NSObject, NSTextViewDelegate {
         weak var textView: NSTextView?
+        private weak var renderedDocument: TextDocument?
         private var renderedText: String?
         private var renderedSize: CGFloat?
         private var renderedBaseURL: URL?
         /// Bumped per render so a slow background render can tell if it has
         /// been superseded before it installs its result.
         private var generation = 0
+        /// Set by clicking "+N more"; holds while Reader stays open, so a
+        /// font-size change doesn't fold the rows again.
+        private var showsAllMetadata = false
 
         /// Documents at or below this size render synchronously (no flash);
         /// larger ones render off the main thread so ⌘⇧P never freezes.
@@ -140,18 +149,19 @@ struct ReaderView: NSViewRepresentable {
         func render(document: TextDocument, fontSize: CGFloat, baseURL: URL?, restoringFraction: CGFloat? = nil) {
             guard let textView else { return }
             let text = document.textStorage.string
+            renderedDocument = document
             renderedText = text
             renderedSize = fontSize
             renderedBaseURL = baseURL
             generation += 1
             let token = generation
-            let renderer = MarkdownRenderer(fontSize: fontSize, baseURL: baseURL)
+            let renderer = MarkdownRenderer(fontSize: fontSize, baseURL: baseURL, showsAllMetadata: showsAllMetadata)
 
             if text.utf8.count <= Self.syncThreshold {
                 let rendering = renderer.renderDocument(text)
                 textView.textStorage?.setAttributedString(rendering.text)
                 if let restoringFraction = restoringFraction.map({
-                    MarkdownRenderer.renderedFraction($0, hiddenLength: rendering.hiddenLength, sourceLength: (text as NSString).length)
+                    rendering.renderedFraction(forSourceFraction: $0, sourceLength: (text as NSString).length)
                 }) {
                     // Geometry (window, frame) is only trustworthy one
                     // runloop after makeNSView; the content is already in
@@ -169,7 +179,7 @@ struct ReaderView: NSViewRepresentable {
                 let rendering = renderer.renderDocument(text)
                 let rendered = rendering.text
                 let restoringFraction = restoringFraction.map {
-                    MarkdownRenderer.renderedFraction($0, hiddenLength: rendering.hiddenLength, sourceLength: (text as NSString).length)
+                    rendering.renderedFraction(forSourceFraction: $0, sourceLength: (text as NSString).length)
                 }
                 DispatchQueue.main.async { [weak self] in
                     guard let self, self.generation == token, let textView = self.textView else { return }
@@ -204,13 +214,19 @@ struct ReaderView: NSViewRepresentable {
 
         // MARK: - Link clicks
 
-        /// Routes clicked links: `#fragment` jumps to the matching rendered
-        /// heading, local files open as their own document windows, and
-        /// anything with a scheme falls through to the system default
-        /// (browser, Mail, …). The renderer has already resolved relative
-        /// paths against the document's directory.
+        /// Routes clicked links: "+N more" unfolds the metadata header,
+        /// `#fragment` jumps to the matching rendered heading, local files
+        /// open as their own document windows, and anything with a scheme
+        /// falls through to the system default (browser, Mail, …). The
+        /// renderer has already resolved relative paths against the
+        /// document's directory.
         func textView(_ textView: NSTextView, clickedOnLink link: Any, at charIndex: Int) -> Bool {
             guard let url = link as? URL else { return false }
+
+            if url == MarkdownRenderer.expandMetadataLink {
+                expandMetadata()
+                return true
+            }
 
             if url.scheme == nil, url.relativePath.isEmpty, let fragment = url.fragment {
                 scroll(toAnchor: fragment)
@@ -229,6 +245,19 @@ struct ReaderView: NSViewRepresentable {
             }
 
             return false
+        }
+
+        /// Re-renders with every metadata row, keeping the page where it is
+        /// (the header sits at the top, so the rows open in place below it).
+        private func expandMetadata() {
+            guard !showsAllMetadata, let document = renderedDocument, let renderedSize else { return }
+            showsAllMetadata = true
+            let origin = textView?.enclosingScrollView?.contentView.bounds.origin
+            render(document: document, fontSize: renderedSize, baseURL: renderedBaseURL)
+            if let origin, let scrollView = textView?.enclosingScrollView {
+                scrollView.contentView.scroll(to: origin)
+                scrollView.reflectScrolledClipView(scrollView.contentView)
+            }
         }
 
         /// Jumps to the heading whose anchor slug matches `fragment`

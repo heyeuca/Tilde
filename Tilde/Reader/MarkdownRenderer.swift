@@ -25,6 +25,14 @@ nonisolated struct MarkdownRenderer {
     /// image AND link paths. Remote images are never fetched regardless.
     var baseURL: URL?
 
+    /// Show every metadata row instead of folding the rest into "+N more";
+    /// set once the reader clicks that line.
+    var showsAllMetadata = false
+
+    /// The link on the "+N more" line. Reader handles it itself — it never
+    /// leaves the app.
+    static let expandMetadataLink = URL(string: "tilde-reader:expand-metadata")!
+
     /// Marks each rendered heading with its GitHub-style anchor slug, so a
     /// clicked `#fragment` link can jump to the matching heading.
     static let headingAnchorKey = NSAttributedString.Key("tildeHeadingAnchor")
@@ -45,23 +53,32 @@ nonisolated struct MarkdownRenderer {
         return String(slug)
     }
 
-    /// A rendered document and how many source characters (UTF-16) were
-    /// hidden in front of it — the frontmatter block, when one was dropped.
+    /// A rendered document, and how its top differs from the source: the
+    /// frontmatter's source characters don't render line for line — they
+    /// become the metadata header, or nothing.
     struct Rendering {
         var text: NSAttributedString
+        /// Source characters (UTF-16) of the frontmatter block, when it was
+        /// turned into the header or hidden; 0 when the source maps straight on.
         var hiddenLength: Int
-    }
+        /// Rendered characters in front of the body: the H1 made from
+        /// `title:`, the metadata rows, and their rule.
+        var prefixLength: Int
 
-    /// The editor reports its reading position as a fraction of the whole
-    /// source, but the rendered text starts after the hidden frontmatter:
-    /// shift the fraction past it, so a position inside the metadata opens
-    /// Reader at the top.
-    static func renderedFraction(_ sourceFraction: CGFloat, hiddenLength: Int, sourceLength: Int) -> CGFloat {
-        guard hiddenLength > 0 else { return sourceFraction }
-        guard sourceLength > hiddenLength else { return 0 }
-        let hidden = CGFloat(hiddenLength)
-        let total = CGFloat(sourceLength)
-        return max(0, (sourceFraction * total - hidden) / (total - hidden))
+        /// The editor reports its reading position as a fraction of the
+        /// whole source. A position inside the frontmatter opens Reader at
+        /// the very top, header in view; one in the body maps onto the body,
+        /// past the header.
+        func renderedFraction(forSourceFraction fraction: CGFloat, sourceLength: Int) -> CGFloat {
+            guard hiddenLength > 0 else { return fraction }
+            let hidden = CGFloat(hiddenLength)
+            let offset = fraction * CGFloat(sourceLength)
+            guard offset > hidden, text.length > 0 else { return 0 }
+            let bodyFraction = (offset - hidden) / (CGFloat(sourceLength) - hidden)
+            let prefix = CGFloat(prefixLength)
+            let rendered = CGFloat(text.length)
+            return (prefix + (rendered - prefix) * bodyFraction) / rendered
+        }
     }
 
     /// Indentation added per list-nesting level and for blockquotes.
@@ -77,23 +94,31 @@ nonisolated struct MarkdownRenderer {
     }
 
     func renderDocument(_ source: String) -> Rendering {
-        // Frontmatter is hidden, not rendered: the parser would show its
-        // fences as rules and its keys as loose paragraphs. The metadata
-        // stays editable in the editor. A metadata card above the content
-        // is the upgrade if readers turn out to want a title or date shown.
+        // Frontmatter becomes a quiet header at the top — `title:` as an H1,
+        // the other keys as rows; the parser alone would show its fences as
+        // rules and its keys as loose paragraphs. A block with nothing to show (empty, or
+        // keys without values) is simply hidden, and one whose lines don't
+        // all belong to keys appears raw as a code listing — never dropped.
         var markdown = source
         var hiddenLength = 0
+        var metadata: [MarkdownFrontmatter.Entry] = []
         let nsSource = source as NSString
         if let frontmatter = MarkdownFrontmatter.range(in: nsSource) {
             let body = nsSource.substring(from: NSMaxRange(frontmatter))
-            if body.contains(where: { !$0.isWhitespace }) {
+            let hasBody = body.contains { !$0.isWhitespace }
+            switch MarkdownFrontmatter.entries(in: nsSource, block: frontmatter) {
+            case let entries? where !entries.isEmpty:
+                metadata = entries
                 markdown = body
                 hiddenLength = frontmatter.length
-            } else {
-                // Nothing but metadata (a SKILL.md, a Hugo _index.md): an
-                // empty page would read as a failed render, so show the
-                // block itself as a quiet code listing.
-                markdown = Self.codeListing(nsSource.substring(with: frontmatter))
+            case .some where hasBody:
+                markdown = body
+                hiddenLength = frontmatter.length
+            default:
+                // Unreadable metadata, or an empty block with no body (an
+                // empty page would read as a failed render): the block itself.
+                let listing = Self.codeListing(nsSource.substring(with: frontmatter))
+                markdown = hasBody ? listing + "\n" + body : listing
             }
         }
 
@@ -110,10 +135,76 @@ nonisolated struct MarkdownRenderer {
                     string: markdown,
                     attributes: EditorTheme.bodyAttributes(monospaced: false, size: fontSize)
                 ),
-                hiddenLength: hiddenLength
+                hiddenLength: hiddenLength,
+                prefixLength: 0
             )
         }
-        return Rendering(text: build(from: parsed), hiddenLength: hiddenLength)
+        let built = build(from: parsed, metadata: metadata)
+        return Rendering(text: built.text, hiddenLength: hiddenLength, prefixLength: built.prefixLength)
+    }
+
+    /// Metadata rows, at most this many before the rest fold into one
+    /// "+N more" line — a header, not a second document. Clicking the line
+    /// shows them all.
+    static let metadataRowLimit = 5
+
+    /// The frontmatter's rows: key, tab, value — the editor's lines with
+    /// the syntax dissolved. Keys sit in the quote color and values in the
+    /// label color, a point smaller than body text. A one-line row keeps
+    /// the page's line rhythm; a long value's wrapped lines sit tighter
+    /// and align under the value column, so they read as one value.
+    private func appendMetadataRows(_ rows: [MarkdownFrontmatter.Entry], to result: NSMutableAttributedString) {
+        // A lone extra row is shown rather than folded into "+1 more".
+        let folds = !showsAllMetadata && rows.count > Self.metadataRowLimit + 1
+        let shown = folds ? Array(rows.prefix(Self.metadataRowLimit)) : rows
+        let font = EditorTheme.bodyFont(monospaced: false, size: fontSize - 1)
+        let rawFont = EditorTheme.codeFont(size: fontSize - 1)
+        let widest = shown.map { ($0.key as NSString).size(withAttributes: [.font: font]).width }.max() ?? 0
+        // Values line up one em past the widest key, capped so a long key
+        // can't squeeze the values into a sliver (it just pushes its own
+        // value along its line).
+        let valueColumn = min(widest + font.pointSize, contentWidth * 0.4).rounded(.up)
+
+        let style = NSMutableParagraphStyle()
+        let halfBeat = EditorTheme.lineSpacing(for: font) / 2
+        style.lineSpacing = halfBeat
+        style.paragraphSpacing = halfBeat
+        style.tabStops = [NSTextTab(textAlignment: .left, location: valueColumn)]
+        style.defaultTabInterval = font.pointSize
+        style.headIndent = valueColumn
+
+        let start = result.length
+        for row in shown {
+            result.append(NSAttributedString(string: row.key + "\t", attributes: [
+                .font: font,
+                .foregroundColor: EditorTheme.quoteColor,
+            ]))
+            // A value this reader couldn't flatten is shown as written, in
+            // the code face, a few lines at most. A line separator keeps a
+            // multi-line value in its row.
+            var value = row.value
+            if row.isRaw {
+                let lines = value.split(separator: "\n", omittingEmptySubsequences: false)
+                if lines.count > Self.metadataRowLimit {
+                    value = lines.prefix(Self.metadataRowLimit).joined(separator: "\n") + "\n…"
+                }
+            }
+            result.append(NSAttributedString(string: value.replacingOccurrences(of: "\n", with: "\u{2028}") + "\n", attributes: [
+                .font: row.isRaw ? rawFont : font,
+                .foregroundColor: row.isRaw ? EditorTheme.quoteColor : NSColor.labelColor,
+            ]))
+        }
+        if folds {
+            // A link — the pointing hand and VoiceOver treat it as one — set
+            // as quietly as the keys, so the header stays grayscale.
+            result.append(NSAttributedString(string: String(localized: "+\(Int(rows.count - shown.count)) more"), attributes: [
+                .font: font,
+                .foregroundColor: EditorTheme.quoteColor,
+                .link: Self.expandMetadataLink,
+            ]))
+            result.append(NSAttributedString(string: "\n", attributes: [.font: font]))
+        }
+        result.addAttribute(.paragraphStyle, value: style, range: NSRange(location: start, length: result.length - start))
     }
 
     /// `text` as a fenced YAML listing, with a fence longer than any
@@ -131,9 +222,13 @@ nonisolated struct MarkdownRenderer {
     private struct Block {
         var intent: PresentationIntent?
         var runs: [(text: String, inline: InlinePresentationIntent?, link: URL?, image: URL?)] = []
+        /// False for the H1 made from `title:`: it isn't a heading in the
+        /// Markdown, so it mustn't claim a slug a body heading's
+        /// `#fragment` links expect (GitHub never sees it either).
+        var takesAnchor = true
     }
 
-    private func build(from parsed: AttributedString) -> NSAttributedString {
+    private func build(from parsed: AttributedString, metadata: [MarkdownFrontmatter.Entry]) -> (text: NSAttributedString, prefixLength: Int) {
         // Group runs into leaf blocks by the identity of their innermost
         // presentation-intent component.
         var blocks: [Block] = []
@@ -149,9 +244,33 @@ nonisolated struct MarkdownRenderer {
             blocks[blocks.count - 1].runs.append((text, run.inlinePresentationIntent, run.link, run.imageURL))
         }
 
+        // The frontmatter renders where it stands, at the top: `title:` as
+        // an H1, then the other keys as rows, then a rule. The body follows
+        // exactly as written, its own H1 included.
+        var rows = metadata
+        var raisedTitle = false
+        if let titleRow = rows.firstIndex(where: { !$0.isRaw && $0.key.lowercased() == "title" }) {
+            let title = rows.remove(at: titleRow).value.replacingOccurrences(of: "\n", with: " ")
+            let heading = PresentationIntent(.header(level: 1), identity: -1, parent: nil)
+            blocks.insert(Block(intent: heading, runs: [(title, nil, nil, nil)], takesAnchor: false), at: 0)
+            raisedTitle = true
+        }
+        let headerFollowsFirstBlock = raisedTitle
+
         let result = NSMutableAttributedString()
         var index = 0
         var afterTextBlock = false
+        var prefixLength = 0
+        func appendHeader() {
+            guard !rows.isEmpty else { return }
+            let start = result.length
+            appendMetadataRows(rows, to: result)
+            // The closing fence, dissolved: the same hairline as a `---` rule —
+            // unless nothing follows it.
+            if index + (headerFollowsFirstBlock ? 1 : 0) < blocks.count { appendThematicBreak(to: result) }
+            prefixLength += result.length - start
+        }
+        if !headerFollowsFirstBlock { appendHeader() }
         // Slugs already assigned to headings, so duplicates get "-1", "-2"…
         // suffixes the way GitHub disambiguates them. A set (not a counter)
         // so a suffixed slug can never collide with a heading that slugs to
@@ -178,11 +297,16 @@ nonisolated struct MarkdownRenderer {
             // blocks even that leading space is absorbed INSIDE the second
             // block, so those adjacencies get a real spacer paragraph.
             if afterTextBlock, usesTextBlock(block) { appendBlockSpacer(to: result) }
-            append(block, to: result, isFirst: index == 0, extraSpacingBefore: afterTextBlock, usedAnchors: &usedAnchors)
+            let blockStart = result.length
+            append(block, to: result, isFirst: result.length == 0, extraSpacingBefore: afterTextBlock, usedAnchors: &usedAnchors)
             afterTextBlock = usesTextBlock(block)
+            if index == 0, headerFollowsFirstBlock {
+                if raisedTitle { prefixLength += result.length - blockStart }
+                appendHeader()
+            }
             index += 1
         }
-        return result
+        return (result, prefixLength)
     }
 
     /// An invisible paragraph exactly one beat tall, placed between two
@@ -384,7 +508,7 @@ nonisolated struct MarkdownRenderer {
         result.addAttribute(.paragraphStyle, value: style, range: blockRange)
 
         // Tag headings with their anchor slug for `#fragment` navigation.
-        if headerLevel > 0 {
+        if headerLevel > 0, block.takesAnchor {
             let base = Self.anchorSlug(for: block.runs.map(\.text).joined())
             var slug = base
             var suffix = 1
@@ -492,6 +616,7 @@ nonisolated struct MarkdownRenderer {
 
         if let link = run.link {
             attributes[.foregroundColor] = EditorTheme.linkColor
+            attributes[.underlineStyle] = NSUnderlineStyle.single.rawValue
             attributes[.link] = resolvedLink(link)
         } else {
             attributes[.foregroundColor] = NSColor.textColor
@@ -543,6 +668,7 @@ nonisolated struct MarkdownRenderer {
             return NSAttributedString(string: altText.isEmpty ? url.absoluteString : altText, attributes: [
                 .font: EditorTheme.bodyFont(monospaced: false, size: fontSize),
                 .foregroundColor: EditorTheme.linkColor,
+                .underlineStyle: NSUnderlineStyle.single.rawValue,
                 .link: url,
             ])
         }
