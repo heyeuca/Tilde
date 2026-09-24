@@ -71,6 +71,9 @@ do {
     let s = render("see [the docs](https://example.com) now\n")
     let at = offset(of: "the docs", in: s)
     expect(color(s, at: at) == EditorTheme.linkColor, "link text tinted")
+    // Reader's text view adds only the pointing hand, so the underline
+    // lives in the text itself.
+    expect(s.attribute(.underlineStyle, at: at, effectiveRange: nil) as? Int == NSUnderlineStyle.single.rawValue, "link text underlined")
     expect((s.attribute(.link, at: at, effectiveRange: nil) as? URL)?.absoluteString == "https://example.com", "link URL attached")
     expect(!s.string.contains("https://"), "link URL hidden in preview")
 }
@@ -246,22 +249,61 @@ func hasAttachment(_ s: NSAttributedString) -> Bool {
     return found
 }
 
-do {
-    let s = render("---\ntitle: Hello\ntags: [a_b]\n---\n# Heading\n\nbody\n")
-    expect(!s.string.contains("title"), "frontmatter: metadata hidden")
-    expect(!hasAttachment(s), "frontmatter: fences are not thematic breaks")
-    expect(s.string.hasPrefix("Heading"), "frontmatter: document starts at the real content")
-    expect(paragraphStyle(s, at: 0)?.paragraphSpacingBefore == 0, "frontmatter: first real block gets no leading space")
+/// The unfold links on "more" labels, in order.
+func moreLinks(_ s: NSAttributedString) -> [URL] {
+    var urls: [URL] = []
+    s.enumerateAttribute(.link, in: NSRange(location: 0, length: s.length)) { value, range, _ in
+        if let url = value as? URL, (s.string as NSString).substring(with: range) == "more" { urls.append(url) }
+    }
+    return urls
+}
+
+func attachmentCount(_ s: NSAttributedString) -> Int {
+    var count = 0
+    s.enumerateAttribute(.attachment, in: NSRange(location: 0, length: s.length)) { value, _, _ in
+        if value != nil { count += 1 }
+    }
+    return count
 }
 
 do {
-    let s = render("---\ntitle: Hello\n...\nbody\n")
-    expect(!s.string.contains("title") && s.string.hasPrefix("body"), "frontmatter: `...` closes the block")
+    // The frontmatter renders where it stands: `title:` as an H1, the other
+    // keys as rows, a rule — then the body as written, its own H1 included.
+    let s = render("---\ntitle: Hello\ntags: [a_b]\n---\n# Heading\n\nbody\n")
+    expect(s.string.hasPrefix("Hello\ntags\ta_b\n\u{FFFC}\nHeading\nbody"), "frontmatter header: title, rows, rule, then the body's H1 (\(s.string.debugDescription))")
+    expect(attachmentCount(s) == 1, "frontmatter header: fences are not thematic breaks; the closing fence dissolves into one rule")
+    let keyAt = offset(of: "tags", in: s)
+    expect(color(s, at: keyAt) == EditorTheme.quoteColor, "frontmatter header: key in quote color")
+    expect(color(s, at: offset(of: "a_b", in: s)) == NSColor.labelColor, "frontmatter header: value in label color")
+    expect(font(s, at: keyAt)?.pointSize == EditorTheme.defaultFontSize - 1 && !isMono(font(s, at: keyAt)), "frontmatter header: body face, a point smaller")
+    expect(s.attribute(EditorTheme.codeBlockMarker, at: keyAt, effectiveRange: nil) == nil, "frontmatter header: no code-block band")
+    expect(paragraphStyle(s, at: 0)?.paragraphSpacingBefore == 0, "frontmatter header: the title opens the page")
+    expect(font(s, at: offset(of: "Heading", in: s)) == EditorTheme.headingFont(level: 1, size: EditorTheme.defaultFontSize), "frontmatter header: the body's H1 renders as written")
+    let valueColumn = paragraphStyle(s, at: keyAt)?.tabStops.first?.location ?? 0
+    expect(valueColumn > 0 && paragraphStyle(s, at: keyAt)?.headIndent == valueColumn, "frontmatter header: wrapped values align under the value column")
+}
+
+do {
+    let s = render("---\ntitle: My Post\ndate: 2026-09-24\n---\nIntro paragraph.\n")
+    expect(s.string == "My Post\ndate\t2026-09-24\n\u{FFFC}\nIntro paragraph.\n", "frontmatter title: rendered as the top H1 (\(s.string.debugDescription))")
+    expect(font(s, at: 0) == EditorTheme.headingFont(level: 1, size: EditorTheme.defaultFontSize), "frontmatter title: set as an H1")
+    expect(s.attribute(MarkdownRenderer.headingAnchorKey, at: 0, effectiveRange: nil) == nil, "frontmatter title: takes no anchor — it isn't a Markdown heading")
+    expect(render("---\ntitle: a *b* [c]\n---\nbody\n").string.hasPrefix("a *b* [c]\n"), "frontmatter title: Markdown characters stay literal")
+    expect(render("---\ntitle: Hello\n...\nbody\n").string == "Hello\nbody\n", "frontmatter: `...` closes the block; a lone title needs no rule")
+}
+
+do {
+    // Both render as written, even when they say the same thing; the body's
+    // heading keeps the slug its `#fragment` links expect.
+    let s = render("---\ntitle: Release notes\ndate: 2026\n---\n# Release Notes\n\nbody\n")
+    expect(s.string.hasPrefix("Release notes\ndate\t2026\n\u{FFFC}\nRelease Notes\nbody"), "frontmatter title: shown even when the body's H1 repeats it (\(s.string.debugDescription))")
+    expect(s.attribute(MarkdownRenderer.headingAnchorKey, at: offset(of: "Release Notes", in: s), effectiveRange: nil) as? String == "release-notes", "frontmatter title: the body's H1 keeps its own slug")
 }
 
 do {
     let s = render("---\n---\nbody\n")
     expect(s.string.hasPrefix("body") && !hasAttachment(s), "frontmatter: empty block hidden")
+    expect(render("---\ntitle:\ntags: []\n---\nbody\n").string == "body\n", "frontmatter: keys without values hidden, no empty header")
 }
 
 do {
@@ -271,16 +313,155 @@ do {
 }
 
 do {
-    // 20-character block + 20-character body: the editor's fraction of the
-    // whole source maps onto the body alone.
-    let source = "---\ntitle: 1234\n---\n" + String(repeating: "b", count: 19) + "\n"
-    let hidden = renderer.renderDocument(source).hiddenLength
+    let keys = (1...8).map { "k\($0): v\($0)" }.joined(separator: "\n")
+    let s = render("---\n" + keys + "\n---\nbody\n")
+    expect(s.string.hasPrefix("k1\tv1\nk2\tv2\nk3\tv3\nk4\tv4\nk5\tv5\n+3 more\n\u{FFFC}\nbody"), "frontmatter header: five rows, then the rest folded (\(s.string.debugDescription))")
+    let six = render("---\n" + (1...6).map { "k\($0): v" }.joined(separator: "\n") + "\n---\nbody\n")
+    expect(six.string.contains("k6\tv") && !six.string.contains("more"), "frontmatter header: a lone sixth row is shown, not folded")
+    let titled = render("---\ntitle: T\n" + (1...6).map { "k\($0): v" }.joined(separator: "\n") + "\n---\nbody\n")
+    expect(titled.string.hasPrefix("T\n") && titled.string.contains("k6\tv"), "frontmatter header: a raised title doesn't count as a row")
+
+    // "+N more" is a link Reader handles itself; following it shows every row.
+    let moreAt = offset(of: "+3 more", in: s)
+    expect(s.attribute(.link, at: moreAt, effectiveRange: nil) as? URL == MarkdownRenderer.MetadataUnfold.rows.link, "frontmatter header: \"+N more\" links to unfolding the rows")
+    expect(color(s, at: moreAt) == EditorTheme.quoteColor && s.attribute(.underlineStyle, at: moreAt, effectiveRange: nil) == nil, "frontmatter header: \"+N more\" is as quiet as the keys")
+    expect(s.attribute(.link, at: moreAt + 7, effectiveRange: nil) == nil, "frontmatter header: the link stops at the line's end")
+    let all = MarkdownRenderer(showsAllMetadataRows: true).render("---\n" + keys + "\n---\nbody\n")
+    expect(all.string.hasPrefix("k1\tv1\nk2\tv2\nk3\tv3\nk4\tv4\nk5\tv5\nk6\tv6\nk7\tv7\nk8\tv8\n\u{FFFC}\nbody") && !all.string.contains("more"), "frontmatter header: unfolded, every row shows (\(all.string.debugDescription))")
+}
+
+do {
+    // A value the key reader can't flatten stays in its row, as written.
+    let s = render("---\ntitle: Hello\ncover:\n  image: a.png\n  alt: A cover\n---\n# Heading\n")
+    expect(s.string == "Hello\ncover\timage: a.png\nalt: A cover\n\u{FFFC}\nHeading\n", "frontmatter header: nested value kept raw in its row (\(s.string.debugDescription))")
+    let rawAt = offset(of: "image: a.png", in: s)
+    expect(isMono(font(s, at: rawAt)) && color(s, at: rawAt) == EditorTheme.quoteColor, "frontmatter header: raw value in the code face, quiet")
+    let long = render("---\nk:\n" + (1...8).map { "  n\($0): v" }.joined(separator: "\n") + "\n---\n")
+    expect(long.string == "k\tn1: v\nn2: v\nn3: v… more\n", "frontmatter header: a raw value shows a few lines at most (\(long.string.debugDescription))")
+    // Lines that belong to no key: the whole block, raw, above the content.
+    let stray = render("---\n  stray\nk: v\n---\n# Heading\n")
+    let at = offset(of: "stray", in: stray)
+    expect(at != NSNotFound && isMono(font(stray, at: at)) && stray.string.contains("Heading"), "frontmatter: a block with keyless lines shown as a listing")
+    expect(renderer.renderDocument("---\n  stray\nk: v\n---\nbody\n").hiddenLength == 0, "frontmatter: nothing hidden behind a raw listing")
+}
+
+do {
+    // Long values are cut — three lines or 240 characters — so one
+    // description can't fill the screen. A quiet "more" after each cut
+    // shows just that value whole; the value itself stays plain text.
+    let words = String(repeating: "word ", count: 80)
+    let source = "---\ndesc: \(words)\nlines: |\n  one\n  two\n  three\n  four\n  five\n---\nbody\n"
+    let s = render(source)
+    let descAt = offset(of: "word", in: s)
+    let descLine = (s.string as NSString).lineRange(for: NSRange(location: descAt, length: 0))
+    let desc = (s.string as NSString).substring(with: NSRange(location: descAt, length: NSMaxRange(descLine) - descAt - 1))
+    expect(desc.count <= MarkdownRenderer.metadataValueCharacterLimit + 6 && desc.hasSuffix("word… more"), "frontmatter header: a long value is cut between words, then \"more\" (\(desc.count) chars)")
+    expect(s.attribute(.link, at: descAt, effectiveRange: nil) == nil && color(s, at: descAt) == NSColor.labelColor, "frontmatter header: the cut value itself stays plain text")
+    expect(moreLinks(s) == [MarkdownRenderer.MetadataUnfold.value(0).link, MarkdownRenderer.MetadataUnfold.value(1).link], "frontmatter header: each \"more\" unfolds its own value")
+    let moreAt = offset(of: "word… more", in: s) + 6
+    expect(color(s, at: moreAt) == EditorTheme.quoteColor && s.attribute(.underlineStyle, at: moreAt, effectiveRange: nil) == nil, "frontmatter header: \"more\" is as quiet as \"+N more\"")
+    expect(s.string.contains("one\ntwo\nthree… more\n") && !s.string.contains("four"), "frontmatter header: a multi-line value is cut to three lines")
+    let bodyLineAt = offset(of: "body", in: s)
+    expect(s.attribute(.link, at: bodyLineAt, effectiveRange: nil) == nil, "frontmatter header: the body is untouched by the cut links")
+    let one = MarkdownRenderer(wholeMetadataValues: [1]).render(source)
+    expect(one.string.contains("five") && one.string.contains("word… more") && moreLinks(one) == [MarkdownRenderer.MetadataUnfold.value(0).link], "frontmatter header: unfolding one value leaves the others cut")
+    let both = MarkdownRenderer(wholeMetadataValues: [0, 1]).render(source)
+    expect(both.string.contains("five") && !both.string.contains("…") && moreLinks(both).isEmpty, "frontmatter header: unfolded values show whole, no \"more\"")
+    expect(MarkdownRenderer.cutValue("short") == nil, "frontmatter header: a short value isn't cut")
+}
+
+do {
+    // Where a cut lands: at a sentence end when one is near the limit (no
+    // ellipsis, so "." never runs into "…"), otherwise between words with
+    // trailing punctuation dropped before the "…".
+    let sentences = String(repeating: "Use this agent when the user asks to review a pull request. ", count: 8)
+    let atSentence = MarkdownRenderer.cutValue(sentences) ?? ""
+    expect(atSentence.hasSuffix("request.") && !atSentence.contains("…"), "frontmatter cut: ends at a sentence, no ellipsis (\(atSentence.suffix(20).debugDescription))")
+    let commas = MarkdownRenderer.cutValue(String(repeating: "alpha, ", count: 60)) ?? ""
+    expect(commas.hasSuffix("alpha…"), "frontmatter cut: trailing punctuation dropped before the ellipsis (\(commas.suffix(12).debugDescription))")
+    let versions = MarkdownRenderer.cutValue(String(repeating: "see v1.2 and example.com ", count: 20)) ?? ""
+    expect(versions.hasSuffix("…") && !versions.hasSuffix(".…"), "frontmatter cut: a dot inside a word isn't a sentence end (\(versions.suffix(16).debugDescription))")
+    expect(MarkdownRenderer.cutValue("One.\nTwo.\nThree.\nFour.") == "One.\nTwo.\nThree.", "frontmatter cut: lines cut after a finished sentence need no ellipsis")
+    expect(MarkdownRenderer.cutValue("one\ntwo:\nthree,\nfour") == "one\ntwo:\nthree…", "frontmatter cut: a line cut mid-thought gets the ellipsis")
+    let cjk = MarkdownRenderer.cutValue(String(repeating: "문장이 끝났습니다。", count: 40)) ?? ""
+    expect(cjk.hasSuffix("。") && !cjk.contains("…"), "frontmatter cut: a CJK full stop counts as a sentence end")
+}
+
+do {
+    // Copying reads right: a multi-line value uses real newlines, its
+    // continuation lines are paragraphs indented to the value column, and
+    // only a row's last line takes the row spacing.
+    let s = render("---\nk: |\n  one\n  two\nm: v\n---\n")
+    expect(s.string == "k\tone\ntwo\nm\tv\n", "frontmatter header: multi-line values copy as lines (\(s.string.debugDescription))")
+    let first = paragraphStyle(s, at: offset(of: "one", in: s))
+    let second = paragraphStyle(s, at: offset(of: "two", in: s))
+    expect(first?.paragraphSpacing == 0 && (second?.paragraphSpacing ?? 0) > 0, "frontmatter header: a value's lines sit together; rows are spaced")
+    expect((second?.headIndent ?? 0) > 0 && second?.firstLineHeadIndent == second?.headIndent && first?.firstLineHeadIndent == 0, "frontmatter header: continuation lines start at the value column")
+    expect(render("---\nk: \"a\\tb\"\n---\n").string == "k\ta b\n", "frontmatter header: tabs in a value become spaces, not tab stops")
+}
+
+do {
+    // The value column is measured over every row, so unfolding doesn't
+    // move it under the rows already on screen.
+    let source = "---\n" + ["a: 1", "b: 2", "c: 3", "d: 4", "e: 5", "f: 6", "a-much-longer-key: 7"].joined(separator: "\n") + "\n---\nbody\n"
+    let folded = render(source)
+    let unfolded = MarkdownRenderer(showsAllMetadataRows: true).render(source)
+    let foldedColumn = paragraphStyle(folded, at: 0)?.tabStops.first?.location
+    expect(foldedColumn != nil && foldedColumn == paragraphStyle(unfolded, at: 0)?.tabStops.first?.location, "frontmatter header: unfolding keeps the value column")
+    expect(!folded.string.contains("a-much-longer-key") && unfolded.string.contains("a-much-longer-key"), "frontmatter header: the long key was folded")
+}
+
+do {
+    // "+N more" and a cut value unfold independently: showing the rows
+    // leaves long values cut, and showing a value leaves the rows folded.
+    let long = String(repeating: "long ", count: 70)
+    // desc is entry 1 (after title) and the first row; late is entry 8, folded.
+    let source = "---\ntitle: T\ndesc: \(long)\n" + (2...7).map { "k\($0): v\($0)" }.joined(separator: "\n") + "\nlate: \(long)\n---\n# Body\n\ntext\n"
+    let rows = MarkdownRenderer(showsAllMetadataRows: true).render(source)
+    expect(rows.string.contains("late\t") && !rows.string.contains("+3 more") && rows.string.contains("long… more"), "frontmatter header: \"+N more\" shows the rows, their long values still cut")
+    let value = MarkdownRenderer(wholeMetadataValues: [1]).render(source)
+    expect(value.string.contains("+3 more") && !value.string.contains("late\t"), "frontmatter header: a cut value unfolds without the folded rows")
+    expect(!(value.string.components(separatedBy: "\n").first { $0.hasPrefix("desc\t") } ?? "").contains("…"), "frontmatter header: the clicked value shows whole")
+    expect(MarkdownRenderer.MetadataUnfold(link: MarkdownRenderer.MetadataUnfold.value(8).link) == .value(8)
+        && MarkdownRenderer.MetadataUnfold(link: MarkdownRenderer.MetadataUnfold.rows.link) == .rows
+        && MarkdownRenderer.MetadataUnfold(link: URL(string: "https://example.com")!) == nil, "frontmatter header: unfold links round-trip, others don't match")
+}
+
+do {
+    // Reader unfolds by splicing a rebuilt header over the first
+    // prefixLength characters — the result must match a render made in
+    // that state from the start, for rows and for a value.
+    let long = String(repeating: "long ", count: 70)
+    let source = "---\ntitle: T\n" + (1...8).map { "k\($0): v\($0)" }.joined(separator: "\n") + "\ndesc: \(long)\n---\n# Body\n\ntext\n"
+    let folded = renderer.renderDocument(source)
+    for state in [MarkdownRenderer(showsAllMetadataRows: true), MarkdownRenderer(showsAllMetadataRows: true, wholeMetadataValues: [9])] {
+        let header = state.metadataHeader(folded.metadata, followedByBody: folded.bodyFollows)
+        let spliced = NSMutableAttributedString(attributedString: folded.text)
+        spliced.replaceCharacters(in: NSRange(location: 0, length: folded.prefixLength), with: header)
+        let full = state.renderDocument(source)
+        expect(spliced.string == full.text.string && header.length == full.prefixLength, "frontmatter header: unfolding in place matches a render in that state (values \(state.wholeMetadataValues.sorted()))")
+    }
+    expect(folded.bodyFollows && !renderer.renderDocument("---\nk: v\n---\n").bodyFollows, "frontmatter header: rendering reports whether a body follows")
+}
+
+do {
+    func near(_ a: CGFloat, _ b: CGFloat) -> Bool { abs(a - b) < 0.0001 }
+    // A 13-character block becomes the 6-character header "k\tv\n" + rule;
+    // the 13-character body renders as itself.
+    let source = "---\nk: v\n---\n" + String(repeating: "b", count: 12) + "\n"
+    let rendering = renderer.renderDocument(source)
     let length = (source as NSString).length
-    expect(hidden == 20, "frontmatter: rendering reports the hidden length")
-    expect(MarkdownRenderer.renderedFraction(0.75, hiddenLength: hidden, sourceLength: length) == 0.5, "frontmatter: reading fraction shifts past the hidden block")
-    expect(MarkdownRenderer.renderedFraction(0.25, hiddenLength: hidden, sourceLength: length) == 0, "frontmatter: a position inside the metadata opens at the top")
-    expect(MarkdownRenderer.renderedFraction(0.3, hiddenLength: 0, sourceLength: 15) == 0.3, "frontmatter: fraction unchanged without a block")
-    expect(renderer.renderDocument("---\nk: v\n---\n").hiddenLength == 0, "frontmatter: nothing hidden when the block is shown as a listing")
+    expect(rendering.hiddenLength == 13 && rendering.prefixLength == 6, "frontmatter: rendering reports hidden block and header lengths (\(rendering.hiddenLength), \(rendering.prefixLength))")
+    expect(rendering.renderedFraction(forSourceFraction: 0.25, sourceLength: length) == 0, "frontmatter: a position inside the metadata opens at the top, header in view")
+    expect(rendering.renderedFraction(forSourceFraction: 0, sourceLength: length) == 0, "frontmatter: the top stays the top")
+    let middle = rendering.renderedFraction(forSourceFraction: 0.75, sourceLength: length)
+    expect(near(middle, 12.5 / 19), "frontmatter: a body position maps past the header (\(middle))")
+    // A raised title counts as header too: "T\n" before a 17-character body.
+    let titled = renderer.renderDocument("---\ntitle: T\n---\n" + String(repeating: "b", count: 16) + "\n")
+    expect(titled.prefixLength == 2 && near(titled.renderedFraction(forSourceFraction: 0.75, sourceLength: 34), 10.5 / 19), "frontmatter: a raised title maps like the header")
+    let plain = renderer.renderDocument("---\n---\n" + String(repeating: "b", count: 7) + "\n")
+    expect(near(plain.renderedFraction(forSourceFraction: 0.75, sourceLength: 16), 0.5), "frontmatter: hidden block without a header shifts onto the body")
+    expect(renderer.renderDocument("no frontmatter\n").renderedFraction(forSourceFraction: 0.3, sourceLength: 15) == 0.3, "frontmatter: fraction unchanged without a block")
 }
 
 // heyeuca/Tilde#10 review: rule-delimited prose must not vanish, and a
@@ -301,19 +482,63 @@ do {
 }
 
 do {
-    let source = "---\nname: my-skill\ndescription: Does a thing\n---\n"
-    let s = render(source)
-    let at = offset(of: "name: my-skill", in: s)
-    expect(at != NSNotFound, "frontmatter-only: the block is shown instead of a blank page")
-    expect(at != NSNotFound && isMono(font(s, at: at)), "frontmatter-only: shown as a code listing")
-    expect(at != NSNotFound && s.attribute(EditorTheme.codeBlockMarker, at: at, effectiveRange: nil) != nil, "frontmatter-only: listing gets the code block background")
-    expect(render("---\nk: v\n---\n\n  \n").string.contains("k: v"), "frontmatter-only: trailing blank lines still count as empty")
-    expect(render("---\nk: ```\n---\n").string.contains("k: ```"), "frontmatter-only: backticks inside the block survive the listing fence")
+    let s = render("---\nname: my-skill\ndescription: Does a thing\n---\n")
+    expect(s.string == "name\tmy-skill\ndescription\tDoes a thing\n", "frontmatter-only: the header is the page, no trailing rule (\(s.string.debugDescription))")
+    expect(render("---\nk: v\n---\n\n  \n").string == "k\tv\n", "frontmatter-only: trailing blank lines still count as empty")
+    expect(render("---\ntitle: Only a title\n---\n").string == "Only a title\n", "frontmatter-only: a lone title becomes the H1")
+    let raw = render("---\nk:\n  nested: v\n---\n")
+    expect(raw.string == "k\tnested: v\n" && isMono(font(raw, at: offset(of: "nested", in: raw))), "frontmatter-only: an unreadable value stays in its row")
+    expect(render("---\nk: |\n  ```\n---\n").string.contains("k\t```"), "frontmatter-only: backticks in a value render as text")
 }
 
 do {
     let s = render("intro\n\n---\n\ntitle: Hello\n\n---\n\nbody\n")
     expect(s.string.contains("title: Hello") && hasAttachment(s), "frontmatter: `---` not on line 1 is a thematic break")
+}
+
+// MARK: - Frontmatter entries (metadata header)
+
+func entries(_ source: String) -> [MarkdownFrontmatter.Entry]? {
+    let ns = source as NSString
+    guard let block = MarkdownFrontmatter.range(in: ns) else { return nil }
+    return MarkdownFrontmatter.entries(in: ns, block: block)
+}
+func pairs(_ source: String) -> [String]? {
+    entries(source)?.map { "\($0.key)=\($0.value)" }
+}
+
+do {
+    expect(pairs("---\ntitle: Hello world\ndate: 2026-09-24\ndraft: false\n---\n") == ["title=Hello world", "date=2026-09-24", "draft=false"], "entries: plain scalars in order")
+    expect(pairs("---\ntitle: \"Quoted: yes\"\nsub: 'it''s'\nesc: \"a \\\"b\\\" c\"\n---\n") == ["title=Quoted: yes", "sub=it's", "esc=a \"b\" c"], "entries: quoted scalars unescaped")
+    expect(pairs("---\n\"publish date\": 2026-09-24\n'draft': no\n---\n") == ["publish date=2026-09-24", "draft=no"], "entries: quoted keys")
+    expect(pairs("---\n# a comment\ntitle: Hi # trailing\nurl: https://x.com/#frag\n\n---\n") == ["title=Hi", "url=https://x.com/#frag"], "entries: comments dropped, `#` inside a value kept")
+    expect(pairs("---\ntags: [a, \"b, c\", 'd']\nnone: []\n---\n") == ["tags=a, b, c, d"], "entries: flow list joined; empty list left out")
+    expect(pairs("---\ntags:\n  - one\n  - \"two\"\naliases:\n- three\n---\n") == ["tags=one, two", "aliases=three"], "entries: block lists, indented or at the key's column")
+    expect(pairs("---\ndesc: |\n  line one\n  line two\n\nnext: v\n---\n") == ["desc=line one\nline two", "next=v"], "entries: literal block keeps line breaks")
+    expect(pairs("---\ndesc: >-\n  folded\n  text\n\n  second\n---\n") == ["desc=folded text\nsecond", ], "entries: folded block joins lines, blank line breaks")
+    expect(pairs("---\ndesc: starts here\n  and continues\nk: v\n---\n") == ["desc=starts here and continues", "k=v"], "entries: multi-line plain scalar folded")
+    expect(pairs("---\ndesc:\n  on the next line\n---\n") == ["desc=on the next line"], "entries: plain scalar starting below the key")
+    expect(pairs("---\ntitle:\nempty: ''\nk: v\n---\n") == ["k=v"], "entries: keys without values left out")
+    expect(pairs("---\n제목: 안녕\n---\n") == ["제목=안녕"], "entries: non-ASCII keys")
+    expect(pairs("---\n---\n") == [], "entries: empty block has no entries")
+}
+
+do {
+    func rawPairs(_ source: String) -> [String]? {
+        entries(source)?.map { "\($0.key)=\($0.value)" + ($0.isRaw ? " [raw]" : "") }
+    }
+    expect(rawPairs("---\ntitle: x\ncover:\n  image: a.png\n  alt: A\n---\n") == ["title=x", "cover=image: a.png\nalt: A [raw]"], "entries: a nested mapping stays raw; other keys still read")
+    expect(rawPairs("---\nitems:\n  - name: a\n---\n") == ["items=- name: a [raw]"], "entries: a list of mappings stays raw")
+    expect(rawPairs("---\nitems:\n  - a\n    - b\n---\n") == ["items=- a\n  - b [raw]"], "entries: a nested list stays raw")
+    expect(rawPairs("---\nk: {a: 1}\n---\n") == ["k={a: 1} [raw]"], "entries: a flow mapping stays raw")
+    expect(rawPairs("---\nk: [a, [b]]\n---\n") == ["k=[a, [b]] [raw]"], "entries: a nested flow list stays raw")
+    expect(rawPairs("---\nk: [a,\n  b]\n---\n") == ["k=[a,\nb] [raw]"], "entries: a multi-line flow list stays raw")
+    expect(rawPairs("---\nbase: &b 1\nother: *b\n---\n") == ["base=&b 1 [raw]", "other=*b [raw]"], "entries: anchors and aliases stay raw")
+    expect(rawPairs("---\nk: !!str 1\n---\n") == ["k=!!str 1 [raw]"], "entries: tags stay raw")
+    expect(rawPairs("---\nk: \"open\n  more\"\n---\n") == ["k=\"open\nmore\" [raw]"], "entries: a multi-line quoted scalar stays raw")
+    expect(rawPairs("---\nk: v\n- stray\n---\n") == ["k=v\n- stray [raw]"], "entries: a list item after a scalar stays raw")
+    expect(rawPairs("---\nk: v\n  just text\n---\n") == ["k=v just text"], "entries: indented text after a scalar continues it")
+    expect(entries("---\n  stray\nk: v\n---\n") == nil, "entries: a line before any key belongs to no key")
 }
 
 // MARK: - Tables
@@ -361,6 +586,7 @@ do {
     let s = render("![a remote pic](https://example.com/x.png)\n")
     let at = offset(of: "a remote pic", in: s)
     expect(color(s, at: at) == EditorTheme.linkColor, "remote image alt tinted as link")
+    expect(s.attribute(.underlineStyle, at: at, effectiveRange: nil) as? Int == NSUnderlineStyle.single.rawValue, "remote image alt underlined as link")
     expect((s.attribute(.link, at: at, effectiveRange: nil) as? URL)?.host == "example.com", "remote image link retained")
     var hasAttachment = false
     s.enumerateAttribute(.attachment, in: NSRange(location: 0, length: s.length)) { v, _, _ in if v != nil { hasAttachment = true } }

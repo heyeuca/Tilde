@@ -25,6 +25,44 @@ nonisolated struct MarkdownRenderer {
     /// image AND link paths. Remote images are never fetched regardless.
     var baseURL: URL?
 
+    /// Show every metadata row instead of folding the rest into "+N more";
+    /// set once the reader clicks that line.
+    var showsAllMetadataRows = false
+
+    /// Metadata entries, by their index in the frontmatter, whose values
+    /// show whole instead of cut; each joins once the reader clicks it.
+    var wholeMetadataValues: Set<Int> = []
+
+    /// What a click in the metadata header unfolds: the folded rows, or
+    /// one cut value. Each arrives as a link Reader handles itself — it
+    /// never leaves the app.
+    enum MetadataUnfold: Equatable {
+        case rows
+        case value(Int)
+
+        private static let prefix = "tilde-reader:unfold-"
+
+        var link: URL {
+            switch self {
+            case .rows: URL(string: Self.prefix + "rows")!
+            case .value(let index): URL(string: Self.prefix + "value-\(index)")!
+            }
+        }
+
+        init?(link: URL) {
+            let string = link.absoluteString
+            guard string.hasPrefix(Self.prefix) else { return nil }
+            let what = string.dropFirst(Self.prefix.count)
+            if what == "rows" {
+                self = .rows
+            } else if what.hasPrefix("value-"), let index = Int(what.dropFirst("value-".count)) {
+                self = .value(index)
+            } else {
+                return nil
+            }
+        }
+    }
+
     /// Marks each rendered heading with its GitHub-style anchor slug, so a
     /// clicked `#fragment` link can jump to the matching heading.
     static let headingAnchorKey = NSAttributedString.Key("tildeHeadingAnchor")
@@ -45,23 +83,37 @@ nonisolated struct MarkdownRenderer {
         return String(slug)
     }
 
-    /// A rendered document and how many source characters (UTF-16) were
-    /// hidden in front of it — the frontmatter block, when one was dropped.
+    /// A rendered document, and how its top differs from the source: the
+    /// frontmatter's source characters don't render line for line — they
+    /// become the metadata header, or nothing.
     struct Rendering {
         var text: NSAttributedString
+        /// Source characters (UTF-16) of the frontmatter block, when it was
+        /// turned into the header or hidden; 0 when the source maps straight on.
         var hiddenLength: Int
-    }
+        /// Rendered characters in front of the body: the H1 made from
+        /// `title:`, the metadata rows, and their rule.
+        var prefixLength: Int
+        /// The frontmatter's entries and whether a body follows them —
+        /// enough for `metadataHeader(_:followedByBody:)` to rebuild the
+        /// first `prefixLength` characters unfolded, without the body.
+        var metadata: [MarkdownFrontmatter.Entry] = []
+        var bodyFollows = false
 
-    /// The editor reports its reading position as a fraction of the whole
-    /// source, but the rendered text starts after the hidden frontmatter:
-    /// shift the fraction past it, so a position inside the metadata opens
-    /// Reader at the top.
-    static func renderedFraction(_ sourceFraction: CGFloat, hiddenLength: Int, sourceLength: Int) -> CGFloat {
-        guard hiddenLength > 0 else { return sourceFraction }
-        guard sourceLength > hiddenLength else { return 0 }
-        let hidden = CGFloat(hiddenLength)
-        let total = CGFloat(sourceLength)
-        return max(0, (sourceFraction * total - hidden) / (total - hidden))
+        /// The editor reports its reading position as a fraction of the
+        /// whole source. A position inside the frontmatter opens Reader at
+        /// the very top, header in view; one in the body maps onto the body,
+        /// past the header.
+        func renderedFraction(forSourceFraction fraction: CGFloat, sourceLength: Int) -> CGFloat {
+            guard hiddenLength > 0 else { return fraction }
+            let hidden = CGFloat(hiddenLength)
+            let offset = fraction * CGFloat(sourceLength)
+            guard offset > hidden, text.length > 0 else { return 0 }
+            let bodyFraction = (offset - hidden) / (CGFloat(sourceLength) - hidden)
+            let prefix = CGFloat(prefixLength)
+            let rendered = CGFloat(text.length)
+            return (prefix + (rendered - prefix) * bodyFraction) / rendered
+        }
     }
 
     /// Indentation added per list-nesting level and for blockquotes.
@@ -77,23 +129,31 @@ nonisolated struct MarkdownRenderer {
     }
 
     func renderDocument(_ source: String) -> Rendering {
-        // Frontmatter is hidden, not rendered: the parser would show its
-        // fences as rules and its keys as loose paragraphs. The metadata
-        // stays editable in the editor. A metadata card above the content
-        // is the upgrade if readers turn out to want a title or date shown.
+        // Frontmatter becomes a quiet header at the top — `title:` as an H1,
+        // the other keys as rows; the parser alone would show its fences as
+        // rules and its keys as loose paragraphs. A block with nothing to show (empty, or
+        // keys without values) is simply hidden, and one whose lines don't
+        // all belong to keys appears raw as a code listing — never dropped.
         var markdown = source
         var hiddenLength = 0
+        var metadata: [MarkdownFrontmatter.Entry] = []
         let nsSource = source as NSString
         if let frontmatter = MarkdownFrontmatter.range(in: nsSource) {
             let body = nsSource.substring(from: NSMaxRange(frontmatter))
-            if body.contains(where: { !$0.isWhitespace }) {
+            let hasBody = body.contains { !$0.isWhitespace }
+            switch MarkdownFrontmatter.entries(in: nsSource, block: frontmatter) {
+            case let entries? where !entries.isEmpty:
+                metadata = entries
                 markdown = body
                 hiddenLength = frontmatter.length
-            } else {
-                // Nothing but metadata (a SKILL.md, a Hugo _index.md): an
-                // empty page would read as a failed render, so show the
-                // block itself as a quiet code listing.
-                markdown = Self.codeListing(nsSource.substring(with: frontmatter))
+            case .some where hasBody:
+                markdown = body
+                hiddenLength = frontmatter.length
+            default:
+                // Unreadable metadata, or an empty block with no body (an
+                // empty page would read as a failed render): the block itself.
+                let listing = Self.codeListing(nsSource.substring(with: frontmatter))
+                markdown = hasBody ? listing + "\n" + body : listing
             }
         }
 
@@ -104,16 +164,178 @@ nonisolated struct MarkdownRenderer {
         )
         guard let parsed = try? AttributedString(markdown: markdown, options: options) else {
             // The parser should never throw under this policy, but never
-            // fail to show something: fall back to plain body text.
-            return Rendering(
-                text: NSAttributedString(
-                    string: markdown,
-                    attributes: EditorTheme.bodyAttributes(monospaced: false, size: fontSize)
-                ),
-                hiddenLength: hiddenLength
-            )
+            // fail to show something: fall back to plain body text, under
+            // the header.
+            let bodyFollows = markdown.contains { !$0.isWhitespace }
+            let text = NSMutableAttributedString(attributedString: metadataHeader(metadata, followedByBody: bodyFollows))
+            let prefixLength = text.length
+            text.append(NSAttributedString(
+                string: markdown,
+                attributes: EditorTheme.bodyAttributes(monospaced: false, size: fontSize)
+            ))
+            return Rendering(text: text, hiddenLength: hiddenLength, prefixLength: prefixLength, metadata: metadata, bodyFollows: bodyFollows)
         }
-        return Rendering(text: build(from: parsed), hiddenLength: hiddenLength)
+        let built = build(from: parsed, metadata: metadata)
+        return Rendering(text: built.text, hiddenLength: hiddenLength, prefixLength: built.prefixLength, metadata: metadata, bodyFollows: built.bodyFollows)
+    }
+
+    /// Metadata rows, at most this many before the rest fold into one
+    /// "+N more" line — a header, not a second document. Clicking the line
+    /// shows the other rows.
+    static let metadataRowLimit = 5
+
+    /// A value longer than this many lines or characters is cut, so one
+    /// long description can't fill the screen either; a quiet "more" after
+    /// the cut shows that value whole.
+    static let metadataValueLineLimit = 3
+    static let metadataValueCharacterLimit = 240
+
+    /// The frontmatter header: `title:` as an H1, the other keys as rows,
+    /// and the rule that closes it when a body follows. Reader splices a
+    /// rebuilt one over the first `prefixLength` characters to unfold rows
+    /// or values without rendering the body again.
+    func metadataHeader(_ metadata: [MarkdownFrontmatter.Entry], followedByBody: Bool) -> NSAttributedString {
+        let header = NSMutableAttributedString()
+        // Rows keep their index in the frontmatter: it names the value a
+        // cut value's link unfolds.
+        var rows = Array(metadata.enumerated())
+        if let titleRow = rows.firstIndex(where: { !$0.element.isRaw && $0.element.key.lowercased() == "title" }) {
+            let title = rows.remove(at: titleRow).element.value.replacingOccurrences(of: "\n", with: " ")
+            let heading = PresentationIntent(.header(level: 1), identity: -1, parent: nil)
+            var noAnchors: Set<String> = []
+            append(Block(intent: heading, runs: [(title, nil, nil, nil)], takesAnchor: false), to: header, isFirst: true, usedAnchors: &noAnchors)
+        }
+        guard !rows.isEmpty else { return header }
+        appendMetadataRows(rows, to: header)
+        // The closing fence, dissolved: the same hairline as a `---` rule.
+        if followedByBody { appendThematicBreak(to: header) }
+        return header
+    }
+
+    /// The frontmatter's rows: key, tab, value — the editor's lines with
+    /// the syntax dissolved. Keys sit in the quote color and values in the
+    /// label color, a point smaller than body text. A one-line row keeps
+    /// the page's line rhythm; a long value's wrapped lines sit tighter
+    /// and align under the value column, so they read as one value.
+    private func appendMetadataRows(_ rows: [(offset: Int, element: MarkdownFrontmatter.Entry)], to result: NSMutableAttributedString) {
+        // A lone extra row is shown rather than folded into "+1 more".
+        let folds = !showsAllMetadataRows && rows.count > Self.metadataRowLimit + 1
+        let shown = folds ? Array(rows.prefix(Self.metadataRowLimit)) : rows
+        let font = EditorTheme.bodyFont(monospaced: false, size: fontSize - 1)
+        let rawFont = EditorTheme.codeFont(size: fontSize - 1)
+        // Measured over every row, folded or not, so unfolding doesn't
+        // shift the column under the rows already on screen. Values line up
+        // one em past the widest key, capped so a long key can't squeeze
+        // the values into a sliver (it just pushes its own value along).
+        let widest = rows.map { ($0.element.key as NSString).size(withAttributes: [.font: font]).width }.max() ?? 0
+        let valueColumn = min(widest + font.pointSize, contentWidth * 0.4).rounded(.up)
+
+        // Each value line is its own paragraph — real newlines, so copied
+        // text reads right — indented to the value column. Only a row's
+        // last line takes the row spacing, so a value's lines sit together
+        // at the tighter wrapped-line rhythm.
+        let halfBeat = EditorTheme.lineSpacing(for: font) / 2
+        func style(firstLine: Bool, lastLine: Bool) -> NSParagraphStyle {
+            let style = NSMutableParagraphStyle()
+            style.lineSpacing = halfBeat
+            style.paragraphSpacing = lastLine ? halfBeat : 0
+            style.tabStops = [NSTextTab(textAlignment: .left, location: valueColumn)]
+            style.defaultTabInterval = font.pointSize
+            style.headIndent = valueColumn
+            style.firstLineHeadIndent = firstLine ? 0 : valueColumn
+            return style
+        }
+
+        for (index, row) in shown {
+            // Tabs would jump to the row's tab stops; they're spacing here.
+            var value = row.value.replacingOccurrences(of: "\t", with: " ")
+            let cut = wholeMetadataValues.contains(index) ? nil : Self.cutValue(value)
+            if let cut { value = cut }
+            let lines = value.split(separator: "\n", omittingEmptySubsequences: false)
+            let valueAttributes: [NSAttributedString.Key: Any] = [
+                .font: row.isRaw ? rawFont : font,
+                .foregroundColor: row.isRaw ? EditorTheme.quoteColor : NSColor.labelColor,
+            ]
+
+            let rowStart = result.length
+            result.append(NSAttributedString(string: row.key + "\t", attributes: [
+                .font: font,
+                .foregroundColor: EditorTheme.quoteColor,
+            ]))
+            for (lineIndex, line) in lines.enumerated() {
+                let lineStart = lineIndex == 0 ? rowStart : result.length
+                result.append(NSAttributedString(string: String(line), attributes: valueAttributes))
+                if cut != nil, lineIndex == lines.count - 1 {
+                    // After a cut, a quiet "more" — the same gray and word
+                    // as "+N more" — is the one place to click; the value
+                    // itself stays plain text.
+                    result.append(NSAttributedString(string: " ", attributes: [.font: font]))
+                    result.append(NSAttributedString(string: String(localized: "more"), attributes: [
+                        .font: font,
+                        .foregroundColor: EditorTheme.quoteColor,
+                        .link: MetadataUnfold.value(index).link,
+                    ]))
+                }
+                result.append(NSAttributedString(string: "\n", attributes: [.font: font]))
+                result.addAttribute(
+                    .paragraphStyle,
+                    value: style(firstLine: lineIndex == 0, lastLine: lineIndex == lines.count - 1),
+                    range: NSRange(location: lineStart, length: result.length - lineStart)
+                )
+            }
+        }
+        if folds {
+            // A link — the pointing hand and VoiceOver treat it as one — set
+            // as quietly as the keys, so the header stays grayscale.
+            let start = result.length
+            result.append(NSAttributedString(string: String(localized: "+\(Int(rows.count - shown.count)) more"), attributes: [
+                .font: font,
+                .foregroundColor: EditorTheme.quoteColor,
+                .link: MetadataUnfold.rows.link,
+            ]))
+            result.append(NSAttributedString(string: "\n", attributes: [.font: font]))
+            result.addAttribute(.paragraphStyle, value: style(firstLine: true, lastLine: true), range: NSRange(location: start, length: result.length - start))
+        }
+    }
+
+    /// `value` cut to a few lines and characters, or nil when it fits. A
+    /// cut ends at a sentence end when one is near the limit — no ellipsis
+    /// needed — and otherwise between words, trailing punctuation dropped
+    /// before the "…" so a period never runs into it ("....").
+    static func cutValue(_ value: String) -> String? {
+        var lines = value.split(separator: "\n", omittingEmptySubsequences: false)
+        var cut = lines.count > metadataValueLineLimit
+        if cut { lines = Array(lines.prefix(metadataValueLineLimit)) }
+        var text = lines.joined(separator: "\n")
+        if text.count > metadataValueCharacterLimit {
+            let limit = text.index(text.startIndex, offsetBy: metadataValueCharacterLimit)
+            let near = text.index(text.startIndex, offsetBy: metadataValueCharacterLimit * 3 / 5)
+            if let sentenceEnd = text[near..<limit].indices.last(where: { isSentenceEnd(at: $0, in: text) }) {
+                text = String(text[...sentenceEnd])
+            } else {
+                var end = limit
+                if let space = text[..<limit].lastIndex(where: { $0 == " " || $0 == "\n" }),
+                   text.distance(from: space, to: limit) < 30 {
+                    end = space
+                }
+                text = String(text[..<end])
+            }
+            cut = true
+        }
+        guard cut else { return nil }
+        text = text.trimmingCharacters(in: .whitespaces)
+        if let last = text.indices.last, isSentenceEnd(at: last, in: text) { return text }
+        return text.trimmingCharacters(in: CharacterSet(charactersIn: ".,;:、，；：").union(.whitespaces)) + "…"
+    }
+
+    /// `.`, `!`, or `?` followed by whitespace or the end — so "v1.2" and
+    /// "example.com" don't count — or a CJK full stop, which needs no space.
+    private static func isSentenceEnd(at index: String.Index, in text: String) -> Bool {
+        let character = text[index]
+        if "。！？".contains(character) { return true }
+        guard ".!?".contains(character) else { return false }
+        let next = text.index(after: index)
+        return next == text.endIndex || text[next].isWhitespace
     }
 
     /// `text` as a fenced YAML listing, with a fence longer than any
@@ -131,9 +353,13 @@ nonisolated struct MarkdownRenderer {
     private struct Block {
         var intent: PresentationIntent?
         var runs: [(text: String, inline: InlinePresentationIntent?, link: URL?, image: URL?)] = []
+        /// False for the H1 made from `title:`: it isn't a heading in the
+        /// Markdown, so it mustn't claim a slug a body heading's
+        /// `#fragment` links expect (GitHub never sees it either).
+        var takesAnchor = true
     }
 
-    private func build(from parsed: AttributedString) -> NSAttributedString {
+    private func build(from parsed: AttributedString, metadata: [MarkdownFrontmatter.Entry]) -> (text: NSAttributedString, prefixLength: Int, bodyFollows: Bool) {
         // Group runs into leaf blocks by the identity of their innermost
         // presentation-intent component.
         var blocks: [Block] = []
@@ -149,7 +375,10 @@ nonisolated struct MarkdownRenderer {
             blocks[blocks.count - 1].runs.append((text, run.inlinePresentationIntent, run.link, run.imageURL))
         }
 
-        let result = NSMutableAttributedString()
+        // The frontmatter renders where it stands, at the top; the body
+        // follows exactly as written, its own H1 included.
+        let header = metadataHeader(metadata, followedByBody: !blocks.isEmpty)
+        let result = NSMutableAttributedString(attributedString: header)
         var index = 0
         var afterTextBlock = false
         // Slugs already assigned to headings, so duplicates get "-1", "-2"…
@@ -178,11 +407,11 @@ nonisolated struct MarkdownRenderer {
             // blocks even that leading space is absorbed INSIDE the second
             // block, so those adjacencies get a real spacer paragraph.
             if afterTextBlock, usesTextBlock(block) { appendBlockSpacer(to: result) }
-            append(block, to: result, isFirst: index == 0, extraSpacingBefore: afterTextBlock, usedAnchors: &usedAnchors)
+            append(block, to: result, isFirst: result.length == 0, extraSpacingBefore: afterTextBlock, usedAnchors: &usedAnchors)
             afterTextBlock = usesTextBlock(block)
             index += 1
         }
-        return result
+        return (result, header.length, !blocks.isEmpty)
     }
 
     /// An invisible paragraph exactly one beat tall, placed between two
@@ -384,7 +613,7 @@ nonisolated struct MarkdownRenderer {
         result.addAttribute(.paragraphStyle, value: style, range: blockRange)
 
         // Tag headings with their anchor slug for `#fragment` navigation.
-        if headerLevel > 0 {
+        if headerLevel > 0, block.takesAnchor {
             let base = Self.anchorSlug(for: block.runs.map(\.text).joined())
             var slug = base
             var suffix = 1
@@ -492,6 +721,7 @@ nonisolated struct MarkdownRenderer {
 
         if let link = run.link {
             attributes[.foregroundColor] = EditorTheme.linkColor
+            attributes[.underlineStyle] = NSUnderlineStyle.single.rawValue
             attributes[.link] = resolvedLink(link)
         } else {
             attributes[.foregroundColor] = NSColor.textColor
@@ -543,6 +773,7 @@ nonisolated struct MarkdownRenderer {
             return NSAttributedString(string: altText.isEmpty ? url.absoluteString : altText, attributes: [
                 .font: EditorTheme.bodyFont(monospaced: false, size: fontSize),
                 .foregroundColor: EditorTheme.linkColor,
+                .underlineStyle: NSUnderlineStyle.single.rawValue,
                 .link: url,
             ])
         }

@@ -66,6 +66,11 @@ struct ReaderView: NSViewRepresentable {
         textView.maxSize = NSSize(width: CGFloat.greatestFiniteMagnitude, height: CGFloat.greatestFiniteMagnitude)
         // Links open in the user's browser; nothing is editable.
         textView.isAutomaticLinkDetectionEnabled = false
+        // Links style themselves in the renderer — link-colored and
+        // underlined in the text, but a quiet "+N more" in the metadata
+        // header — so the view adds only the pointing hand. The `.link`
+        // attribute is what VoiceOver announces, whatever it looks like.
+        textView.linkTextAttributes = [.cursor: NSCursor.pointingHand]
 
         let scrollView = NSScrollView()
         scrollView.hasVerticalScroller = true
@@ -127,6 +132,15 @@ struct ReaderView: NSViewRepresentable {
         /// Bumped per render so a slow background render can tell if it has
         /// been superseded before it installs its result.
         private var generation = 0
+        /// What the reader has unfolded in the metadata header — the folded
+        /// rows ("+N more") and cut values, each on its own. Holds while
+        /// Reader stays open, so a font-size change doesn't fold them again.
+        private var showsAllMetadataRows = false
+        private var wholeMetadataValues: Set<Int> = []
+        /// The metadata header at the top of the installed text, and the
+        /// render that installed it — unfolding rebuilds just this range.
+        private var installedHeader: (metadata: [MarkdownFrontmatter.Entry], bodyFollows: Bool, length: Int)?
+        private var installedGeneration = 0
 
         /// Documents at or below this size render synchronously (no flash);
         /// larger ones render off the main thread so ⌘⇧P never freezes.
@@ -145,13 +159,14 @@ struct ReaderView: NSViewRepresentable {
             renderedBaseURL = baseURL
             generation += 1
             let token = generation
-            let renderer = MarkdownRenderer(fontSize: fontSize, baseURL: baseURL)
+            let renderer = makeRenderer(fontSize: fontSize, baseURL: baseURL)
 
             if text.utf8.count <= Self.syncThreshold {
                 let rendering = renderer.renderDocument(text)
                 textView.textStorage?.setAttributedString(rendering.text)
+                install(rendering, generation: token)
                 if let restoringFraction = restoringFraction.map({
-                    MarkdownRenderer.renderedFraction($0, hiddenLength: rendering.hiddenLength, sourceLength: (text as NSString).length)
+                    rendering.renderedFraction(forSourceFraction: $0, sourceLength: (text as NSString).length)
                 }) {
                     // Geometry (window, frame) is only trustworthy one
                     // runloop after makeNSView; the content is already in
@@ -169,11 +184,18 @@ struct ReaderView: NSViewRepresentable {
                 let rendering = renderer.renderDocument(text)
                 let rendered = rendering.text
                 let restoringFraction = restoringFraction.map {
-                    MarkdownRenderer.renderedFraction($0, hiddenLength: rendering.hiddenLength, sourceLength: (text as NSString).length)
+                    rendering.renderedFraction(forSourceFraction: $0, sourceLength: (text as NSString).length)
                 }
                 DispatchQueue.main.async { [weak self] in
                     guard let self, self.generation == token, let textView = self.textView else { return }
                     textView.textStorage?.setAttributedString(rendered)
+                    self.install(rendering, generation: token)
+                    // Unfolded while this render was on its way: it was
+                    // started with the old state, so rebuild its header now.
+                    if renderer.showsAllMetadataRows != self.showsAllMetadataRows
+                        || renderer.wholeMetadataValues != self.wholeMetadataValues {
+                        self.rebuildInstalledHeader()
+                    }
                     if let restoringFraction { self.scroll(toCharacterFraction: restoringFraction) }
                 }
             }
@@ -204,13 +226,20 @@ struct ReaderView: NSViewRepresentable {
 
         // MARK: - Link clicks
 
-        /// Routes clicked links: `#fragment` jumps to the matching rendered
-        /// heading, local files open as their own document windows, and
-        /// anything with a scheme falls through to the system default
-        /// (browser, Mail, …). The renderer has already resolved relative
-        /// paths against the document's directory.
+        /// Routes clicked links: "+N more" and cut values unfold the metadata
+        /// header,
+        /// `#fragment` jumps to the matching rendered heading, local files
+        /// open as their own document windows, and anything with a scheme
+        /// falls through to the system default (browser, Mail, …). The
+        /// renderer has already resolved relative paths against the
+        /// document's directory.
         func textView(_ textView: NSTextView, clickedOnLink link: Any, at charIndex: Int) -> Bool {
             guard let url = link as? URL else { return false }
+
+            if let unfold = MarkdownRenderer.MetadataUnfold(link: url) {
+                unfoldMetadata(unfold)
+                return true
+            }
 
             if url.scheme == nil, url.relativePath.isEmpty, let fragment = url.fragment {
                 scroll(toAnchor: fragment)
@@ -229,6 +258,51 @@ struct ReaderView: NSViewRepresentable {
             }
 
             return false
+        }
+
+        private func install(_ rendering: MarkdownRenderer.Rendering, generation: Int) {
+            installedHeader = (rendering.metadata, rendering.bodyFollows, rendering.prefixLength)
+            installedGeneration = generation
+        }
+
+        private func makeRenderer(fontSize: CGFloat, baseURL: URL?) -> MarkdownRenderer {
+            MarkdownRenderer(
+                fontSize: fontSize,
+                baseURL: baseURL,
+                showsAllMetadataRows: showsAllMetadataRows,
+                wholeMetadataValues: wholeMetadataValues
+            )
+        }
+
+        /// Unfolds just what was clicked: "+N more" shows the folded rows
+        /// (their long values stay cut), a cut value shows that value whole.
+        private func unfoldMetadata(_ unfold: MarkdownRenderer.MetadataUnfold) {
+            switch unfold {
+            case .rows:
+                guard !showsAllMetadataRows else { return }
+                showsAllMetadataRows = true
+            case .value(let index):
+                guard wholeMetadataValues.insert(index).inserted else { return }
+            }
+            // A render still on its way rebuilds its own header when it lands.
+            guard installedGeneration == generation else { return }
+            rebuildInstalledHeader()
+        }
+
+        /// The header is the installed text's first characters, so only that
+        /// range is rebuilt and swapped — the body isn't parsed again — and
+        /// the page stays where it is.
+        private func rebuildInstalledHeader() {
+            guard let header = installedHeader, let renderedSize, let storage = textView?.textStorage else { return }
+            let rebuilt = makeRenderer(fontSize: renderedSize, baseURL: renderedBaseURL)
+                .metadataHeader(header.metadata, followedByBody: header.bodyFollows)
+            let origin = textView?.enclosingScrollView?.contentView.bounds.origin
+            storage.replaceCharacters(in: NSRange(location: 0, length: header.length), with: rebuilt)
+            installedHeader?.length = rebuilt.length
+            if let origin, let scrollView = textView?.enclosingScrollView {
+                scrollView.contentView.scroll(to: origin)
+                scrollView.reflectScrolledClipView(scrollView.contentView)
+            }
         }
 
         /// Jumps to the heading whose anchor slug matches `fragment`
