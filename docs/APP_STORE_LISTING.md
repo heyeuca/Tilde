@@ -1,4 +1,4 @@
-# App Store Connect 등록 문안 (Tilde v1.0.1)
+# App Store Connect 등록 문안 (Tilde v1.1.0)
 
 각 항목의 글자 수 제한은 App Store Connect 기준이며, `scripts/check_listing.py`로 검증할 수 있다.
 
@@ -19,7 +19,7 @@
 | --- | --- |
 | Bundle ID | `co.euca.Tilde` |
 | SKU | `tilde-macos` |
-| Version | `1.0.1` |
+| Version | `1.1.0` |
 | Primary Language | English (U.S.) |
 | Primary Category | Productivity |
 | Secondary Category | Developer Tools |
@@ -116,6 +116,7 @@ MARKDOWN, DONE LIGHTLY
 • Headings, bold, italic, strikethrough, inline code, code blocks, blockquotes, links, lists, and rules are styled in place
 • The Markdown syntax stays visible — Tilde makes it easier to read, not hidden
 • Reader mode (⌘⇧R): a fully rendered, read-only view with tables and highlighted code blocks; toggle it from the title bar like Safari's Reader
+• YAML frontmatter stays quiet in the editor and becomes a tidy header in Reader: the title on top, the other fields as rows
 
 PLAIN TEXT AND CONFIG FILES
 • Opens .txt, .md, .markdown and most UTF-based text files: .json, .yaml, .toml, .xml, .csv, .log, .env and more
@@ -144,11 +145,8 @@ Just open the file.
 
 **What's New in This Version**
 ```
-• Reader mode now resolves relative links against the document's folder; #fragment links jump within the document
-• Files that can't be decoded losslessly open read-only, so saving can never corrupt the original
-• Editor focus is restored correctly after creating a new document or leaving Reader mode
-• Line numbers update incrementally — smooth typing even in multi-megabyte files
-• Fixed the caret height on the final empty line
+• YAML frontmatter at the top of a Markdown file is now recognized. The editor dims its fences and leaves the lines between them plain, with no Markdown styling
+• Reader shows frontmatter as a quiet header: the title on top, the other fields as rows. Long headers fold into "+N more" and long values into "more" — click to see the rest
 ```
 
 ---
@@ -188,6 +186,7 @@ README를 잠깐 확인하거나 설정 파일 한 줄을 고치거나 Markdown 
 • 제목, 굵게, 기울임, 취소선, 인라인 코드, 코드 블록, 인용, 링크, 목록, 구분선을 제자리에서 스타일링
 • Markdown 문법은 그대로 보입니다. 숨기는 것이 아니라 읽기 쉽게 만듭니다
 • Reader 모드(⌘⇧R): 표와 코드 하이라이팅을 포함한 완전 렌더링 읽기 전용 화면. Safari의 읽기 도구처럼 타이틀 바에서 전환
+• YAML 프론트매터는 편집기에서 조용히 표시되고, Reader 모드에서는 맨 위의 제목과 행으로 정리된 항목으로 보여 줍니다
 
 일반 텍스트와 설정 파일
 • .txt, .md, .markdown은 물론 .json, .yaml, .toml, .xml, .csv, .log, .env 등 대부분의 UTF 기반 텍스트 파일 지원
@@ -216,11 +215,8 @@ Tilde는 MIT 라이선스의 오픈 소스입니다.
 
 **What's New in This Version**
 ```
-• Reader 모드가 상대 링크를 문서 폴더 기준으로 해석하고, #fragment 링크로 문서 안에서 이동합니다
-• 손실 없이 디코딩할 수 없는 파일은 읽기 전용으로 열려 저장으로 원본이 손상되지 않습니다
-• 새 문서 생성 후, Reader 종료 후 편집기 포커스가 올바르게 복구됩니다
-• 줄 번호를 증분 갱신해 수 MB 문서에서도 입력이 부드럽습니다
-• 마지막 빈 줄의 커서 높이를 수정했습니다
+• Markdown 파일 맨 앞의 YAML 프론트매터를 인식합니다. 편집기는 구분선을 흐리게 하고, 그 사이 줄에는 Markdown 스타일을 적용하지 않습니다
+• Reader 모드가 프론트매터를 조용한 머리글로 보여 줍니다. 제목은 맨 위에, 나머지 항목은 행으로 표시하며 긴 머리글은 '외 N개', 긴 값은 '더 보기'로 접습니다. 클릭하면 나머지를 볼 수 있습니다
 ```
 
 ---
@@ -260,6 +256,7 @@ READMEをちょっと確認する、設定ファイルを一行直す、Markdown
 • 見出し、太字、斜体、取り消し線、インラインコード、コードブロック、引用、リンク、リスト、区切り線をその場でスタイリング
 • Markdown記法はそのまま見えます。隠すのではなく読みやすくします
 • リーダーモード(⌘⇧R): 表やコードハイライトを含む完全レンダリングの読み取り専用表示。Safariのリーダーのようにタイトルバーから切り替え
+• YAMLフロントマターはエディタでは控えめに表示し、リーダーモードではタイトルを先頭に、ほかの項目を行に並べたヘッダーとして表示
 
 プレーンテキストと設定ファイル
 • .txt、.md、.markdownに加え、.json、.yaml、.toml、.xml、.csv、.log、.envなどUTF系テキストファイルの多くを開けます
@@ -288,11 +285,8 @@ TildeはMITライセンスのオープンソースです。
 
 **What's New in This Version**
 ```
-• リーダーモードが相対リンクをドキュメントのフォルダ基準で解決し、#fragmentリンクで文書内を移動できます
-• 可逆にデコードできないファイルは読み取り専用で開き、保存で元ファイルが壊れることはありません
-• 新規ドキュメント作成後・リーダー終了後にエディタのフォーカスが正しく戻ります
-• 行番号を差分更新し、数MBのファイルでも入力が滑らかです
-• 最終行(空行)のキャレットの高さを修正しました
+• Markdownファイル先頭のYAMLフロントマターを認識するようになりました。エディタは区切り線を淡く表示し、その間の行にはMarkdownのスタイルを適用しません
+• リーダーモードでフロントマターを控えめなヘッダーとして表示します。タイトルを先頭に、ほかの項目を行に並べ、長いヘッダーは「ほかN件」、長い値は「もっと見る」に折りたたみます。クリックで残りを表示できます
 ```
 
 ---
@@ -332,6 +326,7 @@ Tilde 是一款小巧而美观的 macOS 文本编辑器,为这样的人而生:�
 • 标题、粗体、斜体、删除线、行内代码、代码块、引用、链接、列表和分隔线均就地渲染样式
 • Markdown 语法保持可见,Tilde 让它更易读,而不是把它藏起来
 • 阅读模式(⌘⇧R):完整渲染的只读视图,支持表格和代码高亮;像 Safari 阅读器一样从标题栏切换
+• YAML front matter 在编辑器中安静显示,在阅读模式中呈现为整洁的标题区:标题在上,其余字段逐行排列
 
 纯文本与配置文件
 • 支持 .txt、.md、.markdown,以及 .json、.yaml、.toml、.xml、.csv、.log、.env 等大多数 UTF 编码文本文件
@@ -360,9 +355,6 @@ Tilde 基于 MIT 许可证开源。
 
 **What's New in This Version**
 ```
-• 阅读模式现在以文档所在文件夹为基准解析相对链接,#fragment 链接可在文档内跳转
-• 无法无损解码的文件以只读方式打开,保存永远不会损坏原文件
-• 新建文档后、退出阅读模式后,编辑器焦点可正确恢复
-• 行号采用增量更新,数 MB 的文件输入依然流畅
-• 修复了最后一个空行的光标高度
+• 现在可识别 Markdown 文件开头的 YAML front matter。编辑器会淡化其分隔线,中间各行不应用 Markdown 样式
+• 阅读模式将 front matter 显示为安静的标题区:标题在上,其余字段逐行排列。较长的标题区折叠为"另有 N 项",较长的值折叠为"更多",点击即可查看其余内容
 ```
