@@ -324,16 +324,75 @@ do {
 do {
     // A value the key reader can't flatten stays in its row, as written.
     let s = render("---\ntitle: Hello\ncover:\n  image: a.png\n  alt: A cover\n---\n# Heading\n")
-    expect(s.string == "Hello\ncover\timage: a.png\u{2028}alt: A cover\n\u{FFFC}\nHeading\n", "frontmatter header: nested value kept raw in its row (\(s.string.debugDescription))")
+    expect(s.string == "Hello\ncover\timage: a.png\nalt: A cover\n\u{FFFC}\nHeading\n", "frontmatter header: nested value kept raw in its row (\(s.string.debugDescription))")
     let rawAt = offset(of: "image: a.png", in: s)
     expect(isMono(font(s, at: rawAt)) && color(s, at: rawAt) == EditorTheme.quoteColor, "frontmatter header: raw value in the code face, quiet")
     let long = render("---\nk:\n" + (1...8).map { "  n\($0): v" }.joined(separator: "\n") + "\n---\n")
-    expect(long.string.contains("n5: v\u{2028}…") && !long.string.contains("n6"), "frontmatter header: a raw value shows a few lines at most")
+    expect(long.string == "k\tn1: v\nn2: v\nn3: v…\n", "frontmatter header: a raw value shows a few lines at most (\(long.string.debugDescription))")
     // Lines that belong to no key: the whole block, raw, above the content.
     let stray = render("---\n  stray\nk: v\n---\n# Heading\n")
     let at = offset(of: "stray", in: stray)
     expect(at != NSNotFound && isMono(font(stray, at: at)) && stray.string.contains("Heading"), "frontmatter: a block with keyless lines shown as a listing")
     expect(renderer.renderDocument("---\n  stray\nk: v\n---\nbody\n").hiddenLength == 0, "frontmatter: nothing hidden behind a raw listing")
+}
+
+do {
+    // Long values are cut — three lines or 240 characters, "…" at the cut —
+    // so one description can't fill the screen. The cut value is a quiet
+    // link that unfolds the header; unfolded, values show whole.
+    let words = String(repeating: "word ", count: 80)
+    let source = "---\ndesc: \(words)\nlines: |\n  one\n  two\n  three\n  four\n  five\n---\nbody\n"
+    let s = render(source)
+    let descAt = offset(of: "word", in: s)
+    let descLine = (s.string as NSString).lineRange(for: NSRange(location: descAt, length: 0))
+    let desc = (s.string as NSString).substring(with: NSRange(location: descAt, length: NSMaxRange(descLine) - descAt - 1))
+    expect(desc.count <= MarkdownRenderer.metadataValueCharacterLimit + 1 && desc.hasSuffix("word…"), "frontmatter header: a long value is cut between words (\(desc.count) chars)")
+    expect(s.attribute(.link, at: descAt, effectiveRange: nil) as? URL == MarkdownRenderer.expandMetadataLink, "frontmatter header: a cut value unfolds the header")
+    expect(color(s, at: descAt) == NSColor.labelColor && s.attribute(.underlineStyle, at: descAt, effectiveRange: nil) == nil, "frontmatter header: a cut value keeps its quiet look")
+    expect(s.string.contains("one\ntwo\nthree…\n") && !s.string.contains("four"), "frontmatter header: a multi-line value is cut to three lines")
+    let bodyLineAt = offset(of: "body", in: s)
+    expect(s.attribute(.link, at: bodyLineAt, effectiveRange: nil) == nil, "frontmatter header: the body is untouched by the cut links")
+    let all = MarkdownRenderer(showsAllMetadata: true).render(source)
+    expect(all.string.contains("five") && !all.string.contains("…"), "frontmatter header: unfolded, values show whole")
+    expect(MarkdownRenderer.cutValue("short") == nil, "frontmatter header: a short value isn't cut")
+}
+
+do {
+    // Copying reads right: a multi-line value uses real newlines, its
+    // continuation lines are paragraphs indented to the value column, and
+    // only a row's last line takes the row spacing.
+    let s = render("---\nk: |\n  one\n  two\nm: v\n---\n")
+    expect(s.string == "k\tone\ntwo\nm\tv\n", "frontmatter header: multi-line values copy as lines (\(s.string.debugDescription))")
+    let first = paragraphStyle(s, at: offset(of: "one", in: s))
+    let second = paragraphStyle(s, at: offset(of: "two", in: s))
+    expect(first?.paragraphSpacing == 0 && (second?.paragraphSpacing ?? 0) > 0, "frontmatter header: a value's lines sit together; rows are spaced")
+    expect((second?.headIndent ?? 0) > 0 && second?.firstLineHeadIndent == second?.headIndent && first?.firstLineHeadIndent == 0, "frontmatter header: continuation lines start at the value column")
+    expect(render("---\nk: \"a\\tb\"\n---\n").string == "k\ta b\n", "frontmatter header: tabs in a value become spaces, not tab stops")
+}
+
+do {
+    // The value column is measured over every row, so unfolding doesn't
+    // move it under the rows already on screen.
+    let source = "---\n" + ["a: 1", "b: 2", "c: 3", "d: 4", "e: 5", "f: 6", "a-much-longer-key: 7"].joined(separator: "\n") + "\n---\nbody\n"
+    let folded = render(source)
+    let unfolded = MarkdownRenderer(showsAllMetadata: true).render(source)
+    let foldedColumn = paragraphStyle(folded, at: 0)?.tabStops.first?.location
+    expect(foldedColumn != nil && foldedColumn == paragraphStyle(unfolded, at: 0)?.tabStops.first?.location, "frontmatter header: unfolding keeps the value column")
+    expect(!folded.string.contains("a-much-longer-key") && unfolded.string.contains("a-much-longer-key"), "frontmatter header: the long key was folded")
+}
+
+do {
+    // Reader unfolds by splicing a rebuilt header over the first
+    // prefixLength characters — the result must match an unfolded render.
+    let long = String(repeating: "long ", count: 70)
+    let source = "---\ntitle: T\n" + (1...8).map { "k\($0): v\($0)" }.joined(separator: "\n") + "\ndesc: \(long)\n---\n# Body\n\ntext\n"
+    let folded = renderer.renderDocument(source)
+    let header = MarkdownRenderer(showsAllMetadata: true).metadataHeader(folded.metadata, followedByBody: folded.bodyFollows)
+    let spliced = NSMutableAttributedString(attributedString: folded.text)
+    spliced.replaceCharacters(in: NSRange(location: 0, length: folded.prefixLength), with: header)
+    let full = MarkdownRenderer(showsAllMetadata: true).renderDocument(source)
+    expect(spliced.string == full.text.string && header.length == full.prefixLength, "frontmatter header: unfolding in place matches an unfolded render")
+    expect(folded.bodyFollows && !renderer.renderDocument("---\nk: v\n---\n").bodyFollows, "frontmatter header: rendering reports whether a body follows")
 }
 
 do {

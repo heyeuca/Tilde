@@ -64,6 +64,11 @@ nonisolated struct MarkdownRenderer {
         /// Rendered characters in front of the body: the H1 made from
         /// `title:`, the metadata rows, and their rule.
         var prefixLength: Int
+        /// The frontmatter's entries and whether a body follows them —
+        /// enough for `metadataHeader(_:followedByBody:)` to rebuild the
+        /// first `prefixLength` characters unfolded, without the body.
+        var metadata: [MarkdownFrontmatter.Entry] = []
+        var bodyFollows = false
 
         /// The editor reports its reading position as a fraction of the
         /// whole source. A position inside the frontmatter opens Reader at
@@ -129,24 +134,51 @@ nonisolated struct MarkdownRenderer {
         )
         guard let parsed = try? AttributedString(markdown: markdown, options: options) else {
             // The parser should never throw under this policy, but never
-            // fail to show something: fall back to plain body text.
-            return Rendering(
-                text: NSAttributedString(
-                    string: markdown,
-                    attributes: EditorTheme.bodyAttributes(monospaced: false, size: fontSize)
-                ),
-                hiddenLength: hiddenLength,
-                prefixLength: 0
-            )
+            // fail to show something: fall back to plain body text, under
+            // the header.
+            let bodyFollows = markdown.contains { !$0.isWhitespace }
+            let text = NSMutableAttributedString(attributedString: metadataHeader(metadata, followedByBody: bodyFollows))
+            let prefixLength = text.length
+            text.append(NSAttributedString(
+                string: markdown,
+                attributes: EditorTheme.bodyAttributes(monospaced: false, size: fontSize)
+            ))
+            return Rendering(text: text, hiddenLength: hiddenLength, prefixLength: prefixLength, metadata: metadata, bodyFollows: bodyFollows)
         }
         let built = build(from: parsed, metadata: metadata)
-        return Rendering(text: built.text, hiddenLength: hiddenLength, prefixLength: built.prefixLength)
+        return Rendering(text: built.text, hiddenLength: hiddenLength, prefixLength: built.prefixLength, metadata: metadata, bodyFollows: built.bodyFollows)
     }
 
     /// Metadata rows, at most this many before the rest fold into one
     /// "+N more" line — a header, not a second document. Clicking the line
     /// shows them all.
     static let metadataRowLimit = 5
+
+    /// A value longer than this many lines or characters is cut, "…"
+    /// marking the cut, so one long description can't fill the screen
+    /// either. Clicking the cut value unfolds the whole header.
+    static let metadataValueLineLimit = 3
+    static let metadataValueCharacterLimit = 240
+
+    /// The frontmatter header: `title:` as an H1, the other keys as rows,
+    /// and the rule that closes it when a body follows. Reader splices an
+    /// unfolded one over the first `prefixLength` characters to show
+    /// every row without rendering the body again.
+    func metadataHeader(_ metadata: [MarkdownFrontmatter.Entry], followedByBody: Bool) -> NSAttributedString {
+        let header = NSMutableAttributedString()
+        var rows = metadata
+        if let titleRow = rows.firstIndex(where: { !$0.isRaw && $0.key.lowercased() == "title" }) {
+            let title = rows.remove(at: titleRow).value.replacingOccurrences(of: "\n", with: " ")
+            let heading = PresentationIntent(.header(level: 1), identity: -1, parent: nil)
+            var noAnchors: Set<String> = []
+            append(Block(intent: heading, runs: [(title, nil, nil, nil)], takesAnchor: false), to: header, isFirst: true, usedAnchors: &noAnchors)
+        }
+        guard !rows.isEmpty else { return header }
+        appendMetadataRows(rows, to: header)
+        // The closing fence, dissolved: the same hairline as a `---` rule.
+        if followedByBody { appendThematicBreak(to: header) }
+        return header
+    }
 
     /// The frontmatter's rows: key, tab, value — the editor's lines with
     /// the syntax dissolved. Keys sit in the quote color and values in the
@@ -159,52 +191,89 @@ nonisolated struct MarkdownRenderer {
         let shown = folds ? Array(rows.prefix(Self.metadataRowLimit)) : rows
         let font = EditorTheme.bodyFont(monospaced: false, size: fontSize - 1)
         let rawFont = EditorTheme.codeFont(size: fontSize - 1)
-        let widest = shown.map { ($0.key as NSString).size(withAttributes: [.font: font]).width }.max() ?? 0
-        // Values line up one em past the widest key, capped so a long key
-        // can't squeeze the values into a sliver (it just pushes its own
-        // value along its line).
+        // Measured over every row, folded or not, so unfolding doesn't
+        // shift the column under the rows already on screen. Values line up
+        // one em past the widest key, capped so a long key can't squeeze
+        // the values into a sliver (it just pushes its own value along).
+        let widest = rows.map { ($0.key as NSString).size(withAttributes: [.font: font]).width }.max() ?? 0
         let valueColumn = min(widest + font.pointSize, contentWidth * 0.4).rounded(.up)
 
-        let style = NSMutableParagraphStyle()
+        // Each value line is its own paragraph — real newlines, so copied
+        // text reads right — indented to the value column. Only a row's
+        // last line takes the row spacing, so a value's lines sit together
+        // at the tighter wrapped-line rhythm.
         let halfBeat = EditorTheme.lineSpacing(for: font) / 2
-        style.lineSpacing = halfBeat
-        style.paragraphSpacing = halfBeat
-        style.tabStops = [NSTextTab(textAlignment: .left, location: valueColumn)]
-        style.defaultTabInterval = font.pointSize
-        style.headIndent = valueColumn
+        func style(firstLine: Bool, lastLine: Bool) -> NSParagraphStyle {
+            let style = NSMutableParagraphStyle()
+            style.lineSpacing = halfBeat
+            style.paragraphSpacing = lastLine ? halfBeat : 0
+            style.tabStops = [NSTextTab(textAlignment: .left, location: valueColumn)]
+            style.defaultTabInterval = font.pointSize
+            style.headIndent = valueColumn
+            style.firstLineHeadIndent = firstLine ? 0 : valueColumn
+            return style
+        }
 
-        let start = result.length
         for row in shown {
+            // Tabs would jump to the row's tab stops; they're spacing here.
+            var value = row.value.replacingOccurrences(of: "\t", with: " ")
+            let cut = showsAllMetadata ? nil : Self.cutValue(value)
+            if let cut { value = cut }
+            let lines = value.split(separator: "\n", omittingEmptySubsequences: false)
+            var valueAttributes: [NSAttributedString.Key: Any] = [
+                .font: row.isRaw ? rawFont : font,
+                .foregroundColor: row.isRaw ? EditorTheme.quoteColor : NSColor.labelColor,
+            ]
+            // A cut value is a quiet link that unfolds the header, like "+N more".
+            if cut != nil { valueAttributes[.link] = Self.expandMetadataLink }
+
+            let rowStart = result.length
             result.append(NSAttributedString(string: row.key + "\t", attributes: [
                 .font: font,
                 .foregroundColor: EditorTheme.quoteColor,
             ]))
-            // A value this reader couldn't flatten is shown as written, in
-            // the code face, a few lines at most. A line separator keeps a
-            // multi-line value in its row.
-            var value = row.value
-            if row.isRaw {
-                let lines = value.split(separator: "\n", omittingEmptySubsequences: false)
-                if lines.count > Self.metadataRowLimit {
-                    value = lines.prefix(Self.metadataRowLimit).joined(separator: "\n") + "\n…"
-                }
+            for (index, line) in lines.enumerated() {
+                let lineStart = index == 0 ? rowStart : result.length
+                result.append(NSAttributedString(string: String(line), attributes: valueAttributes))
+                result.append(NSAttributedString(string: "\n", attributes: [.font: font]))
+                result.addAttribute(
+                    .paragraphStyle,
+                    value: style(firstLine: index == 0, lastLine: index == lines.count - 1),
+                    range: NSRange(location: lineStart, length: result.length - lineStart)
+                )
             }
-            result.append(NSAttributedString(string: value.replacingOccurrences(of: "\n", with: "\u{2028}") + "\n", attributes: [
-                .font: row.isRaw ? rawFont : font,
-                .foregroundColor: row.isRaw ? EditorTheme.quoteColor : NSColor.labelColor,
-            ]))
         }
         if folds {
             // A link — the pointing hand and VoiceOver treat it as one — set
             // as quietly as the keys, so the header stays grayscale.
+            let start = result.length
             result.append(NSAttributedString(string: String(localized: "+\(Int(rows.count - shown.count)) more"), attributes: [
                 .font: font,
                 .foregroundColor: EditorTheme.quoteColor,
                 .link: Self.expandMetadataLink,
             ]))
             result.append(NSAttributedString(string: "\n", attributes: [.font: font]))
+            result.addAttribute(.paragraphStyle, value: style(firstLine: true, lastLine: true), range: NSRange(location: start, length: result.length - start))
         }
-        result.addAttribute(.paragraphStyle, value: style, range: NSRange(location: start, length: result.length - start))
+    }
+
+    /// `value` cut to a few lines and characters with "…" at the cut,
+    /// ending between words when a space is near; nil when it fits.
+    static func cutValue(_ value: String) -> String? {
+        var lines = value.split(separator: "\n", omittingEmptySubsequences: false)
+        var cut = lines.count > metadataValueLineLimit
+        if cut { lines = Array(lines.prefix(metadataValueLineLimit)) }
+        var text = lines.joined(separator: "\n")
+        if text.count > metadataValueCharacterLimit {
+            var end = text.index(text.startIndex, offsetBy: metadataValueCharacterLimit)
+            if let space = text[..<end].lastIndex(where: { $0 == " " || $0 == "\n" }),
+               text.distance(from: space, to: end) < 30 {
+                end = space
+            }
+            text = String(text[..<end])
+            cut = true
+        }
+        return cut ? text.trimmingCharacters(in: .whitespaces) + "…" : nil
     }
 
     /// `text` as a fenced YAML listing, with a fence longer than any
@@ -228,7 +297,7 @@ nonisolated struct MarkdownRenderer {
         var takesAnchor = true
     }
 
-    private func build(from parsed: AttributedString, metadata: [MarkdownFrontmatter.Entry]) -> (text: NSAttributedString, prefixLength: Int) {
+    private func build(from parsed: AttributedString, metadata: [MarkdownFrontmatter.Entry]) -> (text: NSAttributedString, prefixLength: Int, bodyFollows: Bool) {
         // Group runs into leaf blocks by the identity of their innermost
         // presentation-intent component.
         var blocks: [Block] = []
@@ -244,33 +313,12 @@ nonisolated struct MarkdownRenderer {
             blocks[blocks.count - 1].runs.append((text, run.inlinePresentationIntent, run.link, run.imageURL))
         }
 
-        // The frontmatter renders where it stands, at the top: `title:` as
-        // an H1, then the other keys as rows, then a rule. The body follows
-        // exactly as written, its own H1 included.
-        var rows = metadata
-        var raisedTitle = false
-        if let titleRow = rows.firstIndex(where: { !$0.isRaw && $0.key.lowercased() == "title" }) {
-            let title = rows.remove(at: titleRow).value.replacingOccurrences(of: "\n", with: " ")
-            let heading = PresentationIntent(.header(level: 1), identity: -1, parent: nil)
-            blocks.insert(Block(intent: heading, runs: [(title, nil, nil, nil)], takesAnchor: false), at: 0)
-            raisedTitle = true
-        }
-        let headerFollowsFirstBlock = raisedTitle
-
-        let result = NSMutableAttributedString()
+        // The frontmatter renders where it stands, at the top; the body
+        // follows exactly as written, its own H1 included.
+        let header = metadataHeader(metadata, followedByBody: !blocks.isEmpty)
+        let result = NSMutableAttributedString(attributedString: header)
         var index = 0
         var afterTextBlock = false
-        var prefixLength = 0
-        func appendHeader() {
-            guard !rows.isEmpty else { return }
-            let start = result.length
-            appendMetadataRows(rows, to: result)
-            // The closing fence, dissolved: the same hairline as a `---` rule —
-            // unless nothing follows it.
-            if index + (headerFollowsFirstBlock ? 1 : 0) < blocks.count { appendThematicBreak(to: result) }
-            prefixLength += result.length - start
-        }
-        if !headerFollowsFirstBlock { appendHeader() }
         // Slugs already assigned to headings, so duplicates get "-1", "-2"…
         // suffixes the way GitHub disambiguates them. A set (not a counter)
         // so a suffixed slug can never collide with a heading that slugs to
@@ -297,16 +345,11 @@ nonisolated struct MarkdownRenderer {
             // blocks even that leading space is absorbed INSIDE the second
             // block, so those adjacencies get a real spacer paragraph.
             if afterTextBlock, usesTextBlock(block) { appendBlockSpacer(to: result) }
-            let blockStart = result.length
             append(block, to: result, isFirst: result.length == 0, extraSpacingBefore: afterTextBlock, usedAnchors: &usedAnchors)
             afterTextBlock = usesTextBlock(block)
-            if index == 0, headerFollowsFirstBlock {
-                if raisedTitle { prefixLength += result.length - blockStart }
-                appendHeader()
-            }
             index += 1
         }
-        return (result, prefixLength)
+        return (result, header.length, !blocks.isEmpty)
     }
 
     /// An invisible paragraph exactly one beat tall, placed between two
