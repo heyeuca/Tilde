@@ -314,10 +314,10 @@ do {
 
     // "+N more" is a link Reader handles itself; following it shows every row.
     let moreAt = offset(of: "+3 more", in: s)
-    expect(s.attribute(.link, at: moreAt, effectiveRange: nil) as? URL == MarkdownRenderer.expandMetadataLink, "frontmatter header: \"+N more\" links to unfolding the rows")
+    expect(s.attribute(.link, at: moreAt, effectiveRange: nil) as? URL == MarkdownRenderer.MetadataUnfold.rows.link, "frontmatter header: \"+N more\" links to unfolding the rows")
     expect(color(s, at: moreAt) == EditorTheme.quoteColor && s.attribute(.underlineStyle, at: moreAt, effectiveRange: nil) == nil, "frontmatter header: \"+N more\" is as quiet as the keys")
     expect(s.attribute(.link, at: moreAt + 7, effectiveRange: nil) == nil, "frontmatter header: the link stops at the line's end")
-    let all = MarkdownRenderer(showsAllMetadata: true).render("---\n" + keys + "\n---\nbody\n")
+    let all = MarkdownRenderer(showsAllMetadataRows: true).render("---\n" + keys + "\n---\nbody\n")
     expect(all.string.hasPrefix("k1\tv1\nk2\tv2\nk3\tv3\nk4\tv4\nk5\tv5\nk6\tv6\nk7\tv7\nk8\tv8\n\u{FFFC}\nbody") && !all.string.contains("more"), "frontmatter header: unfolded, every row shows (\(all.string.debugDescription))")
 }
 
@@ -338,8 +338,8 @@ do {
 
 do {
     // Long values are cut — three lines or 240 characters, "…" at the cut —
-    // so one description can't fill the screen. The cut value is a quiet
-    // link that unfolds the header; unfolded, values show whole.
+    // so one description can't fill the screen. Each cut value is a quiet
+    // link that shows just that value whole.
     let words = String(repeating: "word ", count: 80)
     let source = "---\ndesc: \(words)\nlines: |\n  one\n  two\n  three\n  four\n  five\n---\nbody\n"
     let s = render(source)
@@ -347,13 +347,16 @@ do {
     let descLine = (s.string as NSString).lineRange(for: NSRange(location: descAt, length: 0))
     let desc = (s.string as NSString).substring(with: NSRange(location: descAt, length: NSMaxRange(descLine) - descAt - 1))
     expect(desc.count <= MarkdownRenderer.metadataValueCharacterLimit + 1 && desc.hasSuffix("word…"), "frontmatter header: a long value is cut between words (\(desc.count) chars)")
-    expect(s.attribute(.link, at: descAt, effectiveRange: nil) as? URL == MarkdownRenderer.expandMetadataLink, "frontmatter header: a cut value unfolds the header")
+    expect(s.attribute(.link, at: descAt, effectiveRange: nil) as? URL == MarkdownRenderer.MetadataUnfold.value(0).link, "frontmatter header: a cut value links to unfolding itself")
+    expect(s.attribute(.link, at: offset(of: "one", in: s), effectiveRange: nil) as? URL == MarkdownRenderer.MetadataUnfold.value(1).link, "frontmatter header: each cut value names its own entry")
     expect(color(s, at: descAt) == NSColor.labelColor && s.attribute(.underlineStyle, at: descAt, effectiveRange: nil) == nil, "frontmatter header: a cut value keeps its quiet look")
     expect(s.string.contains("one\ntwo\nthree…\n") && !s.string.contains("four"), "frontmatter header: a multi-line value is cut to three lines")
     let bodyLineAt = offset(of: "body", in: s)
     expect(s.attribute(.link, at: bodyLineAt, effectiveRange: nil) == nil, "frontmatter header: the body is untouched by the cut links")
-    let all = MarkdownRenderer(showsAllMetadata: true).render(source)
-    expect(all.string.contains("five") && !all.string.contains("…"), "frontmatter header: unfolded, values show whole")
+    let one = MarkdownRenderer(wholeMetadataValues: [1]).render(source)
+    expect(one.string.contains("five") && one.string.contains("word…"), "frontmatter header: unfolding one value leaves the others cut")
+    let both = MarkdownRenderer(wholeMetadataValues: [0, 1]).render(source)
+    expect(both.string.contains("five") && !both.string.contains("…"), "frontmatter header: unfolded values show whole")
     expect(MarkdownRenderer.cutValue("short") == nil, "frontmatter header: a short value isn't cut")
 }
 
@@ -375,23 +378,42 @@ do {
     // move it under the rows already on screen.
     let source = "---\n" + ["a: 1", "b: 2", "c: 3", "d: 4", "e: 5", "f: 6", "a-much-longer-key: 7"].joined(separator: "\n") + "\n---\nbody\n"
     let folded = render(source)
-    let unfolded = MarkdownRenderer(showsAllMetadata: true).render(source)
+    let unfolded = MarkdownRenderer(showsAllMetadataRows: true).render(source)
     let foldedColumn = paragraphStyle(folded, at: 0)?.tabStops.first?.location
     expect(foldedColumn != nil && foldedColumn == paragraphStyle(unfolded, at: 0)?.tabStops.first?.location, "frontmatter header: unfolding keeps the value column")
     expect(!folded.string.contains("a-much-longer-key") && unfolded.string.contains("a-much-longer-key"), "frontmatter header: the long key was folded")
 }
 
 do {
+    // "+N more" and a cut value unfold independently: showing the rows
+    // leaves long values cut, and showing a value leaves the rows folded.
+    let long = String(repeating: "long ", count: 70)
+    // desc is entry 1 (after title) and the first row; late is entry 8, folded.
+    let source = "---\ntitle: T\ndesc: \(long)\n" + (2...7).map { "k\($0): v\($0)" }.joined(separator: "\n") + "\nlate: \(long)\n---\n# Body\n\ntext\n"
+    let rows = MarkdownRenderer(showsAllMetadataRows: true).render(source)
+    expect(rows.string.contains("late\t") && !rows.string.contains("more") && rows.string.contains("long…"), "frontmatter header: \"+N more\" shows the rows, their long values still cut")
+    let value = MarkdownRenderer(wholeMetadataValues: [1]).render(source)
+    expect(value.string.contains("+3 more") && !value.string.contains("late\t"), "frontmatter header: a cut value unfolds without the folded rows")
+    expect(!(value.string.components(separatedBy: "\n").first { $0.hasPrefix("desc\t") } ?? "").contains("…"), "frontmatter header: the clicked value shows whole")
+    expect(MarkdownRenderer.MetadataUnfold(link: MarkdownRenderer.MetadataUnfold.value(8).link) == .value(8)
+        && MarkdownRenderer.MetadataUnfold(link: MarkdownRenderer.MetadataUnfold.rows.link) == .rows
+        && MarkdownRenderer.MetadataUnfold(link: URL(string: "https://example.com")!) == nil, "frontmatter header: unfold links round-trip, others don't match")
+}
+
+do {
     // Reader unfolds by splicing a rebuilt header over the first
-    // prefixLength characters — the result must match an unfolded render.
+    // prefixLength characters — the result must match a render made in
+    // that state from the start, for rows and for a value.
     let long = String(repeating: "long ", count: 70)
     let source = "---\ntitle: T\n" + (1...8).map { "k\($0): v\($0)" }.joined(separator: "\n") + "\ndesc: \(long)\n---\n# Body\n\ntext\n"
     let folded = renderer.renderDocument(source)
-    let header = MarkdownRenderer(showsAllMetadata: true).metadataHeader(folded.metadata, followedByBody: folded.bodyFollows)
-    let spliced = NSMutableAttributedString(attributedString: folded.text)
-    spliced.replaceCharacters(in: NSRange(location: 0, length: folded.prefixLength), with: header)
-    let full = MarkdownRenderer(showsAllMetadata: true).renderDocument(source)
-    expect(spliced.string == full.text.string && header.length == full.prefixLength, "frontmatter header: unfolding in place matches an unfolded render")
+    for state in [MarkdownRenderer(showsAllMetadataRows: true), MarkdownRenderer(showsAllMetadataRows: true, wholeMetadataValues: [9])] {
+        let header = state.metadataHeader(folded.metadata, followedByBody: folded.bodyFollows)
+        let spliced = NSMutableAttributedString(attributedString: folded.text)
+        spliced.replaceCharacters(in: NSRange(location: 0, length: folded.prefixLength), with: header)
+        let full = state.renderDocument(source)
+        expect(spliced.string == full.text.string && header.length == full.prefixLength, "frontmatter header: unfolding in place matches a render in that state (values \(state.wholeMetadataValues.sorted()))")
+    }
     expect(folded.bodyFollows && !renderer.renderDocument("---\nk: v\n---\n").bodyFollows, "frontmatter header: rendering reports whether a body follows")
 }
 

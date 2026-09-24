@@ -132,9 +132,11 @@ struct ReaderView: NSViewRepresentable {
         /// Bumped per render so a slow background render can tell if it has
         /// been superseded before it installs its result.
         private var generation = 0
-        /// Set by clicking "+N more" or a cut value; holds while Reader
-        /// stays open, so a font-size change doesn't fold the rows again.
-        private var showsAllMetadata = false
+        /// What the reader has unfolded in the metadata header — the folded
+        /// rows ("+N more") and cut values, each on its own. Holds while
+        /// Reader stays open, so a font-size change doesn't fold them again.
+        private var showsAllMetadataRows = false
+        private var wholeMetadataValues: Set<Int> = []
         /// The metadata header at the top of the installed text, and the
         /// render that installed it — unfolding rebuilds just this range.
         private var installedHeader: (metadata: [MarkdownFrontmatter.Entry], bodyFollows: Bool, length: Int)?
@@ -157,7 +159,7 @@ struct ReaderView: NSViewRepresentable {
             renderedBaseURL = baseURL
             generation += 1
             let token = generation
-            let renderer = MarkdownRenderer(fontSize: fontSize, baseURL: baseURL, showsAllMetadata: showsAllMetadata)
+            let renderer = makeRenderer(fontSize: fontSize, baseURL: baseURL)
 
             if text.utf8.count <= Self.syncThreshold {
                 let rendering = renderer.renderDocument(text)
@@ -189,8 +191,11 @@ struct ReaderView: NSViewRepresentable {
                     textView.textStorage?.setAttributedString(rendered)
                     self.install(rendering, generation: token)
                     // Unfolded while this render was on its way: it was
-                    // started folded, so unfold its header now.
-                    if self.showsAllMetadata, !renderer.showsAllMetadata { self.unfoldInstalledHeader() }
+                    // started with the old state, so rebuild its header now.
+                    if renderer.showsAllMetadataRows != self.showsAllMetadataRows
+                        || renderer.wholeMetadataValues != self.wholeMetadataValues {
+                        self.rebuildInstalledHeader()
+                    }
                     if let restoringFraction { self.scroll(toCharacterFraction: restoringFraction) }
                 }
             }
@@ -221,7 +226,8 @@ struct ReaderView: NSViewRepresentable {
 
         // MARK: - Link clicks
 
-        /// Routes clicked links: "+N more" unfolds the metadata header,
+        /// Routes clicked links: "+N more" and cut values unfold the metadata
+        /// header,
         /// `#fragment` jumps to the matching rendered heading, local files
         /// open as their own document windows, and anything with a scheme
         /// falls through to the system default (browser, Mail, …). The
@@ -230,8 +236,8 @@ struct ReaderView: NSViewRepresentable {
         func textView(_ textView: NSTextView, clickedOnLink link: Any, at charIndex: Int) -> Bool {
             guard let url = link as? URL else { return false }
 
-            if url == MarkdownRenderer.expandMetadataLink {
-                expandMetadata()
+            if let unfold = MarkdownRenderer.MetadataUnfold(link: url) {
+                unfoldMetadata(unfold)
                 return true
             }
 
@@ -259,25 +265,40 @@ struct ReaderView: NSViewRepresentable {
             installedGeneration = generation
         }
 
-        /// Shows every metadata row and every value in full. The header is
-        /// the installed text's first characters, so only that range is
-        /// rebuilt and swapped — the body isn't parsed again — and the page
-        /// stays where it is.
-        private func expandMetadata() {
-            guard !showsAllMetadata else { return }
-            showsAllMetadata = true
-            // A render still on its way unfolds its own header when it lands.
-            guard installedGeneration == generation else { return }
-            unfoldInstalledHeader()
+        private func makeRenderer(fontSize: CGFloat, baseURL: URL?) -> MarkdownRenderer {
+            MarkdownRenderer(
+                fontSize: fontSize,
+                baseURL: baseURL,
+                showsAllMetadataRows: showsAllMetadataRows,
+                wholeMetadataValues: wholeMetadataValues
+            )
         }
 
-        private func unfoldInstalledHeader() {
+        /// Unfolds just what was clicked: "+N more" shows the folded rows
+        /// (their long values stay cut), a cut value shows that value whole.
+        private func unfoldMetadata(_ unfold: MarkdownRenderer.MetadataUnfold) {
+            switch unfold {
+            case .rows:
+                guard !showsAllMetadataRows else { return }
+                showsAllMetadataRows = true
+            case .value(let index):
+                guard wholeMetadataValues.insert(index).inserted else { return }
+            }
+            // A render still on its way rebuilds its own header when it lands.
+            guard installedGeneration == generation else { return }
+            rebuildInstalledHeader()
+        }
+
+        /// The header is the installed text's first characters, so only that
+        /// range is rebuilt and swapped — the body isn't parsed again — and
+        /// the page stays where it is.
+        private func rebuildInstalledHeader() {
             guard let header = installedHeader, let renderedSize, let storage = textView?.textStorage else { return }
-            let renderer = MarkdownRenderer(fontSize: renderedSize, baseURL: renderedBaseURL, showsAllMetadata: true)
-            let unfolded = renderer.metadataHeader(header.metadata, followedByBody: header.bodyFollows)
+            let rebuilt = makeRenderer(fontSize: renderedSize, baseURL: renderedBaseURL)
+                .metadataHeader(header.metadata, followedByBody: header.bodyFollows)
             let origin = textView?.enclosingScrollView?.contentView.bounds.origin
-            storage.replaceCharacters(in: NSRange(location: 0, length: header.length), with: unfolded)
-            installedHeader?.length = unfolded.length
+            storage.replaceCharacters(in: NSRange(location: 0, length: header.length), with: rebuilt)
+            installedHeader?.length = rebuilt.length
             if let origin, let scrollView = textView?.enclosingScrollView {
                 scrollView.contentView.scroll(to: origin)
                 scrollView.reflectScrolledClipView(scrollView.contentView)

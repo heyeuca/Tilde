@@ -27,11 +27,41 @@ nonisolated struct MarkdownRenderer {
 
     /// Show every metadata row instead of folding the rest into "+N more";
     /// set once the reader clicks that line.
-    var showsAllMetadata = false
+    var showsAllMetadataRows = false
 
-    /// The link on the "+N more" line. Reader handles it itself — it never
-    /// leaves the app.
-    static let expandMetadataLink = URL(string: "tilde-reader:expand-metadata")!
+    /// Metadata entries, by their index in the frontmatter, whose values
+    /// show whole instead of cut; each joins once the reader clicks it.
+    var wholeMetadataValues: Set<Int> = []
+
+    /// What a click in the metadata header unfolds: the folded rows, or
+    /// one cut value. Each arrives as a link Reader handles itself — it
+    /// never leaves the app.
+    enum MetadataUnfold: Equatable {
+        case rows
+        case value(Int)
+
+        private static let prefix = "tilde-reader:unfold-"
+
+        var link: URL {
+            switch self {
+            case .rows: URL(string: Self.prefix + "rows")!
+            case .value(let index): URL(string: Self.prefix + "value-\(index)")!
+            }
+        }
+
+        init?(link: URL) {
+            let string = link.absoluteString
+            guard string.hasPrefix(Self.prefix) else { return nil }
+            let what = string.dropFirst(Self.prefix.count)
+            if what == "rows" {
+                self = .rows
+            } else if what.hasPrefix("value-"), let index = Int(what.dropFirst("value-".count)) {
+                self = .value(index)
+            } else {
+                return nil
+            }
+        }
+    }
 
     /// Marks each rendered heading with its GitHub-style anchor slug, so a
     /// clicked `#fragment` link can jump to the matching heading.
@@ -151,24 +181,26 @@ nonisolated struct MarkdownRenderer {
 
     /// Metadata rows, at most this many before the rest fold into one
     /// "+N more" line — a header, not a second document. Clicking the line
-    /// shows them all.
+    /// shows the other rows.
     static let metadataRowLimit = 5
 
     /// A value longer than this many lines or characters is cut, "…"
     /// marking the cut, so one long description can't fill the screen
-    /// either. Clicking the cut value unfolds the whole header.
+    /// either. Clicking the cut value shows that value whole.
     static let metadataValueLineLimit = 3
     static let metadataValueCharacterLimit = 240
 
     /// The frontmatter header: `title:` as an H1, the other keys as rows,
-    /// and the rule that closes it when a body follows. Reader splices an
-    /// unfolded one over the first `prefixLength` characters to show
-    /// every row without rendering the body again.
+    /// and the rule that closes it when a body follows. Reader splices a
+    /// rebuilt one over the first `prefixLength` characters to unfold rows
+    /// or values without rendering the body again.
     func metadataHeader(_ metadata: [MarkdownFrontmatter.Entry], followedByBody: Bool) -> NSAttributedString {
         let header = NSMutableAttributedString()
-        var rows = metadata
-        if let titleRow = rows.firstIndex(where: { !$0.isRaw && $0.key.lowercased() == "title" }) {
-            let title = rows.remove(at: titleRow).value.replacingOccurrences(of: "\n", with: " ")
+        // Rows keep their index in the frontmatter: it names the value a
+        // cut value's link unfolds.
+        var rows = Array(metadata.enumerated())
+        if let titleRow = rows.firstIndex(where: { !$0.element.isRaw && $0.element.key.lowercased() == "title" }) {
+            let title = rows.remove(at: titleRow).element.value.replacingOccurrences(of: "\n", with: " ")
             let heading = PresentationIntent(.header(level: 1), identity: -1, parent: nil)
             var noAnchors: Set<String> = []
             append(Block(intent: heading, runs: [(title, nil, nil, nil)], takesAnchor: false), to: header, isFirst: true, usedAnchors: &noAnchors)
@@ -185,9 +217,9 @@ nonisolated struct MarkdownRenderer {
     /// label color, a point smaller than body text. A one-line row keeps
     /// the page's line rhythm; a long value's wrapped lines sit tighter
     /// and align under the value column, so they read as one value.
-    private func appendMetadataRows(_ rows: [MarkdownFrontmatter.Entry], to result: NSMutableAttributedString) {
+    private func appendMetadataRows(_ rows: [(offset: Int, element: MarkdownFrontmatter.Entry)], to result: NSMutableAttributedString) {
         // A lone extra row is shown rather than folded into "+1 more".
-        let folds = !showsAllMetadata && rows.count > Self.metadataRowLimit + 1
+        let folds = !showsAllMetadataRows && rows.count > Self.metadataRowLimit + 1
         let shown = folds ? Array(rows.prefix(Self.metadataRowLimit)) : rows
         let font = EditorTheme.bodyFont(monospaced: false, size: fontSize - 1)
         let rawFont = EditorTheme.codeFont(size: fontSize - 1)
@@ -195,7 +227,7 @@ nonisolated struct MarkdownRenderer {
         // shift the column under the rows already on screen. Values line up
         // one em past the widest key, capped so a long key can't squeeze
         // the values into a sliver (it just pushes its own value along).
-        let widest = rows.map { ($0.key as NSString).size(withAttributes: [.font: font]).width }.max() ?? 0
+        let widest = rows.map { ($0.element.key as NSString).size(withAttributes: [.font: font]).width }.max() ?? 0
         let valueColumn = min(widest + font.pointSize, contentWidth * 0.4).rounded(.up)
 
         // Each value line is its own paragraph — real newlines, so copied
@@ -214,31 +246,31 @@ nonisolated struct MarkdownRenderer {
             return style
         }
 
-        for row in shown {
+        for (index, row) in shown {
             // Tabs would jump to the row's tab stops; they're spacing here.
             var value = row.value.replacingOccurrences(of: "\t", with: " ")
-            let cut = showsAllMetadata ? nil : Self.cutValue(value)
+            let cut = wholeMetadataValues.contains(index) ? nil : Self.cutValue(value)
             if let cut { value = cut }
             let lines = value.split(separator: "\n", omittingEmptySubsequences: false)
             var valueAttributes: [NSAttributedString.Key: Any] = [
                 .font: row.isRaw ? rawFont : font,
                 .foregroundColor: row.isRaw ? EditorTheme.quoteColor : NSColor.labelColor,
             ]
-            // A cut value is a quiet link that unfolds the header, like "+N more".
-            if cut != nil { valueAttributes[.link] = Self.expandMetadataLink }
+            // A cut value is a quiet link that shows just that value whole.
+            if cut != nil { valueAttributes[.link] = MetadataUnfold.value(index).link }
 
             let rowStart = result.length
             result.append(NSAttributedString(string: row.key + "\t", attributes: [
                 .font: font,
                 .foregroundColor: EditorTheme.quoteColor,
             ]))
-            for (index, line) in lines.enumerated() {
-                let lineStart = index == 0 ? rowStart : result.length
+            for (lineIndex, line) in lines.enumerated() {
+                let lineStart = lineIndex == 0 ? rowStart : result.length
                 result.append(NSAttributedString(string: String(line), attributes: valueAttributes))
                 result.append(NSAttributedString(string: "\n", attributes: [.font: font]))
                 result.addAttribute(
                     .paragraphStyle,
-                    value: style(firstLine: index == 0, lastLine: index == lines.count - 1),
+                    value: style(firstLine: lineIndex == 0, lastLine: lineIndex == lines.count - 1),
                     range: NSRange(location: lineStart, length: result.length - lineStart)
                 )
             }
@@ -250,7 +282,7 @@ nonisolated struct MarkdownRenderer {
             result.append(NSAttributedString(string: String(localized: "+\(Int(rows.count - shown.count)) more"), attributes: [
                 .font: font,
                 .foregroundColor: EditorTheme.quoteColor,
-                .link: Self.expandMetadataLink,
+                .link: MetadataUnfold.rows.link,
             ]))
             result.append(NSAttributedString(string: "\n", attributes: [.font: font]))
             result.addAttribute(.paragraphStyle, value: style(firstLine: true, lastLine: true), range: NSRange(location: start, length: result.length - start))
