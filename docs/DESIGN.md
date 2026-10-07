@@ -246,7 +246,7 @@ Styling is **attributes only** — the character content of the buffer is never 
 | Inline code | SF Mono, subtle background | `` ` `` dim |
 | Code block | SF Mono, subtle background | ``` ``` ``` dim |
 | Blockquote | `.secondaryLabelColor` | `>` dim |
-| Link | link color | brackets/URL dim |
+| Link | link color; ⌘-click opens it with Reader's rules (`#fragment` scrolls to the heading), pointing hand while ⌘ is held over it | brackets/URL dim |
 | List bullet / number | body | marker slightly emphasized |
 | Horizontal rule | — | `---` dim |
 | Frontmatter (line 1 `---` … `---`/`...`, empty or with a top-level `key:` line) | `.secondaryLabelColor`, no Markdown rules inside | fences dim, never an HR |
