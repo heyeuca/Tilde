@@ -289,6 +289,7 @@ struct TextEditorView: NSViewRepresentable {
                 let font = EditorTheme.bodyFont(monospaced: monospaced, size: settings.fontSize)
                 editorView.caretHeight = EditorTheme.caretHeight(monospaced: monospaced, size: settings.fontSize)
                 editorView.bodyLineSpacing = EditorTheme.lineSpacing(for: font)
+                editorView.formatsMarkdown = settings.isMarkdown
             }
 
             configureWordWrap(settings.wordWrap, textView: textView, scrollView: scrollView)
