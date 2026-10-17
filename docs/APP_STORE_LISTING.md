@@ -1,21 +1,31 @@
-# App Store Connect 등록 문안 (Tilde v1.3.0)
+# App Store Connect Listing (Tilde v1.3.0)
 
-각 항목의 글자 수 제한은 App Store Connect 기준이며, `scripts/check_listing.py`로 검증할 수 있다.
+The limits below are App Store Connect's. Run `python3 scripts/check_listing.py` before pasting any field into App Store Connect: it checks every field's length and its characters.
 
-| 항목 | 제한 |
+| Field | Limit |
 | --- | ---: |
 | Name | 30 |
 | Subtitle | 30 |
 | Promotional Text | 170 |
 | Description | 4000 |
-| Keywords | 100 (쉼표 포함) |
+| Keywords | 100 (commas included) |
 | What's New | 4000 |
+
+### Characters
+
+App Store Connect refuses some characters in listing fields, and Apple doesn't publish which. In 1.3.0 it refused the Control Pictures `␀` and `␛` in What's New. So listing text uses only:
+
+- printable ASCII and line breaks;
+- letters, marks, and digits of any script, except presentation forms;
+- the symbols App Store Connect has already accepted, listed in `ACCEPTED_SYMBOLS` in `scripts/check_listing.py`: `·` `—` `•` `⇧` `⌘` `▸` `、` `。` `「` `」` `・`.
+
+Describe any other character in words, as What's New does for control codes ("show as dimmed symbols"). Add a symbol to `ACCEPTED_SYMBOLS` only after App Store Connect has accepted it. CI runs the check on every pull request.
 
 ---
 
-## 공통 (로케일 무관)
+## Shared (all locales)
 
-| 항목 | 값 |
+| Field | Value |
 | --- | --- |
 | Bundle ID | `co.euca.Tilde` |
 | SKU | `tilde-macos` |
@@ -26,24 +36,24 @@
 | Price | Free (Tier 0) |
 | Availability | All countries/regions |
 | Copyright | `© 2026 euca` |
-| Age Rating | 4+ (모든 설문 항목 "None") |
+| Age Rating | 4+ ("None" for every questionnaire item) |
 | Support URL | `https://github.com/heyeuca/Tilde` |
-| Marketing URL (선택) | `https://github.com/heyeuca/Tilde` |
-| Privacy Policy URL (필수) | `https://github.com/heyeuca/Tilde/blob/main/PRIVACY.md` (리포 루트의 [PRIVACY.md](../PRIVACY.md)) |
-| Content Rights | 제3자 콘텐츠 없음 (No) |
-| Export Compliance | 암호화 미사용 → "None of the algorithms mentioned above" (HTTPS 표준 호출만 있으면 exempt). `ITSAppUsesNonExemptEncryption = NO`를 Info.plist에 넣어두면 매번 묻지 않음 |
-| Government End Users | 해당 없음 |
+| Marketing URL (optional) | `https://github.com/heyeuca/Tilde` |
+| Privacy Policy URL (required) | `https://github.com/heyeuca/Tilde/blob/main/PRIVACY.md` ([PRIVACY.md](../PRIVACY.md) at the repository root) |
+| Content Rights | No third-party content (No) |
+| Export Compliance | No non-exempt encryption → "None of the algorithms mentioned above" (exempt when the app only makes standard HTTPS calls). With `ITSAppUsesNonExemptEncryption = NO` in Info.plist, App Store Connect doesn't ask on every build |
+| Government End Users | Not applicable |
 
 ### App Privacy (Privacy Nutrition Label)
 
-- **Data Not Collected** 선택. 서버 통신, 계정, 분석, 광고 SDK 없음.
-- 추적(Tracking): No.
+- Choose **Data Not Collected**. No server communication, accounts, analytics, or ad SDKs.
+- Tracking: No.
 
 ### App Review Information
 
 - Sign-in required: **No**
-- Contact: 이름 / 전화 / 이메일 (직접 입력)
-- Notes (영문):
+- Contact: name / phone / email (enter by hand)
+- Notes (in English):
 
 ```
 Tilde is a lightweight, document-based plain-text and Markdown editor for macOS.
@@ -66,18 +76,18 @@ image that references a neighboring local file may show its alt text instead
 of the image unless macOS has granted access to that file. This is expected.
 ```
 
-- Attachment: 필요 없음 (샘플 `.md` 파일 하나를 첨부하면 심사관이 편함. `README.md`를 첨부 추천)
+- Attachment: not required (attaching one sample `.md` file makes review easier; `README.md` works well)
 
-### 스크린샷 (macOS 필수 1장 이상, 최대 10장)
+### Screenshots (macOS: at least 1, up to 10)
 
-허용 해상도: 1280×800, 1440×900, 2560×1600, 2880×1800. 권장 세트(2880×1800, 라이트/다크 각 1장 이상):
+Accepted sizes: 1280×800, 1440×900, 2560×1600, 2880×1800. Suggested set (2880×1800, at least one each in light and dark):
 
-1. Markdown 문서 편집 화면 (헤딩·볼드·코드가 문법 그대로 보이며 스타일링된 모습)
-2. Reader 모드 (표·코드 블록 포함 렌더링)
-3. `.json` 또는 `.yaml` 파일의 조용한 키 하이라이팅
-4. 다크 모드 편집 화면
-5. Find & Replace 바
-6. 환경설정 창 (Appearance / Line numbers / Word wrap)
+1. Editing a Markdown document (headings, bold, and code styled with their syntax still visible)
+2. Reader mode (a rendered table and code block)
+3. Quiet key highlighting in a `.json` or `.yaml` file
+4. Editing in dark mode
+5. The Find & Replace bar
+6. The Settings window (Appearance / Line numbers / Word wrap)
 
 ---
 
@@ -149,13 +159,13 @@ Just open the file.
 **What's New in This Version**
 ```
 • Tab follows each file's indentation: spaces at the file's own width in a space-indented file, a tab otherwise, and always spaces in YAML. With several lines selected, Tab indents them and ⇧Tab outdents them
-• Invisible characters get a faint mark in the editor: zero-width spaces, byte-order marks, bidirectional controls, and no-break and full-width spaces. Control codes such as NUL and ESC show as ␀ and ␛. Saving, copying and Find still see the original characters
+• Invisible characters get a faint mark in the editor: zero-width spaces, byte-order marks, bidirectional controls, and no-break and full-width spaces. Control codes such as NUL and ESC show as dimmed symbols. Saving, copying and Find still see the original characters
 • ⌘-click a Markdown link in the editor to follow it the way Reader does: a #heading link scrolls to the heading, a link to a local file opens it, and a web link opens in your browser
 ```
 
 ---
 
-## 한국어
+## Korean
 
 **Name**
 ```
@@ -223,13 +233,13 @@ Tilde는 MIT 라이선스의 오픈 소스입니다.
 **What's New in This Version**
 ```
 • Tab이 파일의 들여쓰기를 따릅니다. 공백으로 들여쓴 파일에서는 파일이 쓰는 너비만큼 공백을, 그 밖에는 탭을 넣고, YAML에서는 항상 공백을 넣습니다. 여러 줄을 선택하면 Tab으로 들여쓰고 ⇧Tab으로 내어씁니다
-• 편집기에서 보이지 않는 문자를 옅게 표시합니다. 폭 없는 공백, BOM, 양방향 제어 문자, 줄바꿈 없는 공백과 전각 공백이 대상이고, NUL이나 ESC 같은 제어 문자는 ␀, ␛로 보입니다. 저장, 복사, 찾기에는 원래 문자가 그대로 쓰입니다
+• 편집기에서 보이지 않는 문자를 옅게 표시합니다. 폭 없는 공백, BOM, 양방향 제어 문자, 줄바꿈 없는 공백과 전각 공백이 대상이고, NUL이나 ESC 같은 제어 문자는 흐린 기호로 보입니다. 저장, 복사, 찾기에는 원래 문자가 그대로 쓰입니다
 • 편집기에서 Markdown 링크를 ⌘-클릭하면 Reader처럼 따라갑니다. #제목 링크는 그 제목으로 스크롤하고, 로컬 파일 링크는 그 파일을 열고, 웹 링크는 브라우저로 엽니다
 ```
 
 ---
 
-## 日本語
+## Japanese
 
 **Name**
 ```
@@ -297,13 +307,13 @@ TildeはMITライセンスのオープンソースです。
 **What's New in This Version**
 ```
 • Tabがファイルのインデントに従うようになりました。スペースでインデントされたファイルではファイルと同じ幅のスペースを、それ以外ではタブを入力し、YAMLでは常にスペースを入力します。複数行を選択すると、Tabでインデント、⇧Tabでアウトデントします
-• エディタで見えない文字を淡く表示します。ゼロ幅スペース、BOM、双方向制御文字、ノーブレークスペースや全角スペースが対象で、NULやESCなどの制御文字は␀や␛として表示されます。保存、コピー、検索では元の文字がそのまま使われます
+• エディタで見えない文字を淡く表示します。ゼロ幅スペース、BOM、双方向制御文字、ノーブレークスペースや全角スペースが対象で、NULやESCなどの制御文字は淡い記号として表示されます。保存、コピー、検索では元の文字がそのまま使われます
 • エディタでMarkdownのリンクを⌘-クリックすると、リーダーモードと同じようにたどれます。#見出しリンクはその見出しまでスクロールし、ローカルファイルへのリンクはそのファイルを開き、Webリンクはブラウザで開きます
 ```
 
 ---
 
-## 简体中文
+## Chinese (Simplified)
 
 **Name**
 ```
@@ -371,6 +381,6 @@ Tilde 基于 MIT 许可证开源。
 **What's New in This Version**
 ```
 • Tab 现在跟随文件的缩进:在用空格缩进的文件中按文件自身宽度插入空格,其他情况插入制表符,YAML 文件始终插入空格。选中多行时,Tab 整体缩进,⇧Tab 整体取消缩进
-• 编辑器会以淡色标出不可见字符:零宽空格、BOM、双向控制字符、不换行空格和全角空格;NUL、ESC 等控制字符显示为 ␀ 和 ␛。保存、复制和查找仍使用原始字符
+• 编辑器会以淡色标出不可见字符:零宽空格、BOM、双向控制字符、不换行空格和全角空格;NUL、ESC 等控制字符显示为淡色符号。保存、复制和查找仍使用原始字符
 • 在编辑器中按住 ⌘ 点按 Markdown 链接,即可像阅读模式一样跟随:#标题 链接滚动到该标题,指向本地文件的链接会打开该文件,网页链接在浏览器中打开
 ```

@@ -19,6 +19,10 @@ jobs:
           swift --version
       - name: Run test suites
         run: ./Tests/run.sh
+      - name: Check the App Store listing
+        # Field lengths, and only characters App Store Connect accepts
+        # (docs/APP_STORE_LISTING.md, "Characters").
+        run: python3 scripts/check_listing.py
 
   build:
     name: Build

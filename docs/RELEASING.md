@@ -134,3 +134,7 @@ The DMG build has **Tilde → Check for Updates…**, backed by
   description, review notes) in App Store Connect.
 - Version/build numbers live in the project (`MARKETING_VERSION`,
   `CURRENT_PROJECT_VERSION`); bump them per release.
+- Listing text (Description, What's New, …) lives in
+  `docs/APP_STORE_LISTING.md`. App Store Connect refuses some characters,
+  so paste only text that passes `python3 scripts/check_listing.py`
+  (see "Characters" in that file).
