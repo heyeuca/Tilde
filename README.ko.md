@@ -84,6 +84,9 @@ Tilde는 macOS 관례를 따릅니다.
 | 이전 찾기 | `⌘⇧G` |
 | 찾기 및 바꾸기 | `⌥⌘F` |
 | Reader | `⌘⇧R` |
+| 볼드체 (Markdown) | `⌘B` |
+| 이탤릭체 (Markdown) | `⌘I` |
+| 링크 추가 (Markdown) | `⌘K` |
 | 들여쓰기 / 내어쓰기 | `Tab` / `⇧Tab` |
 | 링크 열기 (Markdown) | `⌘`-클릭 |
 | 환경설정 | `⌘,` |
