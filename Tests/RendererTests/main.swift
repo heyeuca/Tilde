@@ -269,6 +269,31 @@ do {
     }
 }
 
+do {
+    // Copied as plain text, a box reads ☐ / ☑︎ the way a bullet reads "•";
+    // the attachment itself stays in the text for rich-text copies.
+    let s = render("- [ ] Write the spec\n- [x] Ship it\n- plain\n")
+    func copyText(at i: Int) -> String? {
+        s.attribute(MarkdownRenderer.copyTextKey, at: i, effectiveRange: nil) as? String
+    }
+    expect(copyText(at: lineStart(of: "Write", in: s)) == "☐", "task: an open box copies as ☐")
+    expect(copyText(at: lineStart(of: "Ship", in: s)) == "☑\u{FE0E}", "task: a checked box copies as ☑ in text presentation")
+    expect(copyText(at: offset(of: "Write", in: s)) == nil && copyText(at: lineStart(of: "plain", in: s)) == nil, "task: only the box is marked, not its text or a bullet")
+    expect(checkbox(s, at: lineStart(of: "Ship", in: s)) == "Done", "task: the copy mark keeps the box an attachment")
+
+    let copied = MarkdownRenderer.copyText(of: s)
+    expect(copied == "☐\tWrite the spec\n☑\u{FE0E}\tShip it\n•\tplain\n", "task: plain text copies each box as ☐ / ☑︎ (\(copied.debugDescription))")
+    let ns = s.string as NSString
+    let shipLine = ns.lineRange(for: NSRange(location: offset(of: "Ship", in: s), length: 0))
+    expect(MarkdownRenderer.copyText(of: s.attributedSubstring(from: shipLine)) == "☑\u{FE0E}\tShip it\n", "task: a selection of one item copies its box")
+    let afterBox = NSRange(location: offset(of: "Write", in: s), length: ns.length - offset(of: "Write", in: s))
+    expect(MarkdownRenderer.copyText(of: s.attributedSubstring(from: afterBox)) == "Write the spec\n☑\u{FE0E}\tShip it\n•\tplain\n", "task: a selection that starts after a box leaves that box out")
+
+    let plain = render("text **bold** and `code`\n\n- item\n")
+    expect(MarkdownRenderer.copyText(of: plain) == plain.string, "copy text: text with no boxes copies as it is")
+    expect(MarkdownRenderer.copyText(of: NSAttributedString()) == "", "copy text: nothing selected copies nothing")
+}
+
 // MARK: - Blockquote
 
 do {

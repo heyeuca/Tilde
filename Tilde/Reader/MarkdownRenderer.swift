@@ -660,12 +660,39 @@ nonisolated struct MarkdownRenderer {
     /// where the box would otherwise outgrow the marker column.
     private static let checkboxGap: CGFloat = 5
 
+    /// Marks a character that copies as plain text differently from what
+    /// it is: a checkbox attachment, which would otherwise copy as U+FFFC.
+    /// The value is the text to copy instead. Reader's text view swaps it
+    /// in when it writes plain text; rich text keeps the attachment.
+    static let copyTextKey = NSAttributedString.Key("tildeCopyText")
+
+    /// What a checkbox copies as, the way a bullet copies as "•". U+FE0E
+    /// keeps ☑ a text glyph where it pastes, not an emoji.
+    private static func checkboxText(done: Bool) -> String {
+        done ? "☑\u{FE0E}" : "☐"
+    }
+
+    /// `text` as plain text to copy: its characters, with each range
+    /// marked `copyTextKey` replaced by the text it copies as.
+    static func copyText(of text: NSAttributedString) -> String {
+        let copied = NSMutableString(string: text.string)
+        var replacements: [(range: NSRange, text: String)] = []
+        text.enumerateAttribute(copyTextKey, in: NSRange(location: 0, length: text.length)) { value, range, _ in
+            if let value = value as? String { replacements.append((range, value)) }
+        }
+        // Back to front, so the ranges still ahead keep their offsets.
+        for replacement in replacements.reversed() {
+            copied.replaceCharacters(in: replacement.range, with: replacement.text)
+        }
+        return copied as String
+    }
+
     /// The checkbox in place of a task item's bullet: SF Symbols' square,
     /// checked when done, in the bullet's ink or — done — the quote color.
     /// It takes the text's size and sits centered on the cap height, so the
     /// line is exactly as tall as a bullet's; at large sizes it stays
     /// inside the marker column so the text still starts at the tab stop.
-    /// Like images and rules, it copies as an attachment character.
+    /// It copies as ☐ / ☑︎ (`copyTextKey`).
     private func checkbox(done: Bool) -> NSAttributedString {
         let color = done ? EditorTheme.quoteColor : NSColor.textColor
         let markerFont = EditorTheme.listMarkerFont(size: fontSize)
@@ -677,7 +704,7 @@ nonisolated struct MarkdownRenderer {
             systemSymbolName: done ? "checkmark.square" : "square",
             accessibilityDescription: done ? String(localized: "Done") : String(localized: "Not done")
         )?.withSymbolConfiguration(configuration) else {
-            return NSAttributedString(string: done ? "☑" : "☐", attributes: [.font: markerFont, .foregroundColor: color])
+            return NSAttributedString(string: Self.checkboxText(done: done), attributes: [.font: markerFont, .foregroundColor: color])
         }
 
         var size = image.size
@@ -690,7 +717,10 @@ nonisolated struct MarkdownRenderer {
         attachment.image = image
         attachment.bounds = NSRect(x: 0, y: ((capHeight - size.height) / 2).rounded(), width: size.width, height: size.height)
         let box = NSMutableAttributedString(attachment: attachment)
-        box.addAttribute(.font, value: markerFont, range: NSRange(location: 0, length: box.length))
+        box.addAttributes([
+            .font: markerFont,
+            Self.copyTextKey: Self.checkboxText(done: done),
+        ], range: NSRange(location: 0, length: box.length))
         return box
     }
 

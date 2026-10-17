@@ -111,6 +111,12 @@ runners, and the unsigned smoke bundle).
       may read nothing useful (layout, colors, and boundaries are covered
       by `RendererTests` / `StylerTests`; the live switch and VoiceOver are
       not)
+- [ ] Copying task lists: select a few task items in Reader, ⌘C, and paste
+      as plain text (Terminal, or `pbpaste`): each box comes out as `☐` /
+      `☑︎`, not a placeholder character, and a ⌘-drag multiple selection
+      pastes one piece per line. Paste into TextEdit: the boxes come back as
+      images (the plain-text swap is covered by `RendererTests`; the real ⌘C
+      and the pastes are not)
 - [ ] **Sandbox image behavior** (unverifiable on the unsandboxed smoke
       bundle): a sibling `./image.png` is blocked by the sandbox and should
       show the alt-text fallback, NOT the image. Decide whether to add a
