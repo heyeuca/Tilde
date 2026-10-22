@@ -35,6 +35,7 @@ build_and_run DocumentTests \
     Tilde/Document/LineEnding.swift \
     Tilde/Document/IndentStyle.swift \
     Tilde/Document/TextDocument.swift \
+    Tilde/Document/NSDocument+Copies.swift \
     Tests/DocumentTests/main.swift || status=1
 
 build_and_run LineIndexTests \

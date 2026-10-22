@@ -4,6 +4,7 @@
 //
 
 import SwiftUI
+import AppKit
 
 @main
 struct TildeApp: App {
@@ -18,6 +19,7 @@ struct TildeApp: App {
             "NSShowAppCentricOpenPanelInsteadOfUntitledFile": false,
         ])
         AppearanceSetting.applyAtLaunch()
+        NSDocument.keepFileTypeAndPermissionsOnCopies()
     }
 
     var body: some Scene {

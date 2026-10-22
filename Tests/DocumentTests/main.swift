@@ -2,7 +2,7 @@
 // document-type decision. Compiled as a plain executable by Tests/run.sh —
 // no XCTest, so the suite runs on machines with only the Command Line Tools.
 
-import Foundation
+import AppKit
 import UniformTypeIdentifiers
 
 var passed = 0
@@ -587,6 +587,74 @@ do {
            "binary refusal names the reason in the alert title")
     expect(error.localizedRecoverySuggestion?.hasPrefix("Tilde opens text files only.") == true,
            "binary refusal explains what Tilde opens")
+}
+
+// MARK: - Save As and Duplicate keep the file's type and permissions (#39)
+
+do {
+    let listed = TextDocument.writableContentTypes.map(\.identifier)
+    for type in [UTType.json, .yaml, .shellScript, .commaSeparatedText] {
+        expect(NSDocument.writableTypes(listed, listing: type.identifier) == listed + [type.identifier],
+               "the save panel offers the document's own type (\(type.identifier))")
+    }
+    // The panel can't select a type without an extension, and asserts on
+    // a dynamic one; those keep proposing .txt.
+    let unknown = UTType(filenameExtension: "tildeunknownext")!.identifier
+    expect(NSDocument.writableTypes(listed, listing: unknown) == listed,
+           "a dynamic type (an unknown extension) isn't offered")
+    expect(NSDocument.writableTypes(listed, listing: UTType.data.identifier) == listed,
+           "public.data (no extension) isn't offered")
+    expect(NSDocument.writableTypes(listed, listing: UTType.plainText.identifier) == listed,
+           "a listed type isn't added twice")
+    expect(NSDocument.writableTypes(listed, listing: nil) == listed,
+           "a document without a type keeps the static list")
+
+    // Outside an app AppKit's own list is empty, so only the added type shows.
+    NSDocument.keepFileTypeAndPermissionsOnCopies()
+    NSDocument.keepFileTypeAndPermissionsOnCopies()  // a second call must not undo the exchange
+    let document = NSDocument()
+    document.fileType = UTType.json.identifier
+    expect(document.writableTypes(for: .saveAsOperation) == [UTType.json.identifier],
+           "Save As lists the document's own type")
+    expect(document.writableTypes(for: .saveOperation) == [UTType.json.identifier],
+           "saving a duplicate lists the document's own type")
+    document.fileType = nil
+    expect(document.writableTypes(for: .saveAsOperation) == [] && document.fileType == nil,
+           "a document without a type doesn't recurse through fileType")
+}
+
+do {
+    let directory = FileManager.default.temporaryDirectory
+        .appendingPathComponent("TildeDocumentTests-\(UUID().uuidString)")
+    try! FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+    defer { try? FileManager.default.removeItem(at: directory) }
+    let key = directory.appendingPathComponent("id_ed25519")
+    try! Data("secret\n".utf8).write(to: key)
+    try! FileManager.default.setAttributes([.posixPermissions: 0o4600], ofItemAtPath: key.path)
+    expect(NSDocument.posixPermissions(at: key) == 0o600, "setuid isn't carried over")
+    expect(NSDocument.posixPermissions(at: directory.appendingPathComponent("missing")) == nil,
+           "a missing source has no permissions")
+
+    let opened = NSDocument()
+    opened.fileURL = key
+    expect(opened.permissionsForCopy(for: .saveAsOperation) == 0o600, "Save As takes the source's permissions")
+    expect(opened.permissionsForCopy(for: .saveOperation) == nil, "an in-place save keeps the file's own")
+    expect(opened.permissionsForCopy(for: .autosaveInPlaceOperation) == nil, "an autosave keeps the file's own")
+    let attributes = try! opened.fileAttributesToWrite(
+        to: directory.appendingPathComponent("copy"), ofType: UTType.plainText.identifier,
+        for: .saveAsOperation, originalContentsURL: key
+    )
+    expect(attributes[FileAttributeKey.posixPermissions.rawValue] as? Int == 0o600,
+           "Save As writes the source's permissions")
+
+    let duplicate = NSDocument()
+    duplicate.sourcePermissions = 0o755
+    expect(duplicate.permissionsForCopy(for: .saveOperation) == 0o755,
+           "a duplicate's first save takes the source's permissions")
+    expect(duplicate.permissionsForCopy(for: .saveAsOperation) == 0o755,
+           "Save As of a duplicate takes the source's permissions")
+    expect(NSDocument().permissionsForCopy(for: .saveOperation) == nil,
+           "a new document gets the default permissions")
 }
 
 print("\n\(passed) passed, \(failed) failed")

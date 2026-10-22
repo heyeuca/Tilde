@@ -184,6 +184,22 @@ Three kinds of code say otherwise, each for a reason the compiler can check
   the guard. `.data` is left out of
   `writableContentTypes` so the save panel's File Format menu doesn't gain
   an entry for it; a file opened as `public.data` still saves in place.
+- Save As and Duplicate keep the file's extension and permissions (#39,
+  `NSDocument+Copies.swift`). SwiftUI's document class is private, so
+  three AppKit methods are exchanged once at launch:
+  - `writableTypes(for:)` adds the document's own type when it isn't
+    listed, so the save panel selects it (`data copy.json`, not
+    `data copy.txt`). The panel picks a type by the name's extension
+    (`.yaml` becomes the type's preferred `.yml`), so `public.data` and
+    `dyn.*` documents (`id_ed25519`, `id_ed25519.pub`) are left out and
+    still propose `.txt`; AppKit asserts when asked to select a `dyn.*`
+    type it has no display name for.
+  - `fileAttributesToWrite(…)` gives the file Save As or a duplicate's
+    first save creates the source's permission bits (`-rw-------` stays
+    private, `-rwxr-xr-x` stays executable). In-place saves and autosaves
+    are untouched; they keep the file's own permissions.
+  - `duplicate()` hands the new document the source's permissions, since
+    the duplicate is read back from a copy AppKit writes as owner-only.
 - Markdown-ness for styling/Reader follows the LIVE file URL
   (`TextDocument.isMarkdown(openedAsMarkdown:fileURL:)`): the current
   extension wins, so Save As between `.md` and `.txt`/`.json` switches
