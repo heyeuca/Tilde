@@ -78,10 +78,13 @@ extension NSDocument {
     // MARK: - Permissions
 
     /// The permission bits of the file at `url`; setuid, setgid and sticky
-    /// aren't carried over.
+    /// aren't carried over. A symbolic link is followed: its own mode is
+    /// usually `rwxr-xr-x`, not the private file it points to.
     static func posixPermissions(at url: URL?) -> Int? {
         guard let url,
-              let permissions = try? FileManager.default.attributesOfItem(atPath: url.path)[.posixPermissions] as? Int
+              let permissions = try? FileManager.default.attributesOfItem(
+                  atPath: url.resolvingSymlinksInPath().path
+              )[.posixPermissions] as? Int
         else { return nil }
         return permissions & 0o777
     }

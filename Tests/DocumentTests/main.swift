@@ -634,6 +634,10 @@ do {
     expect(NSDocument.posixPermissions(at: key) == 0o600, "setuid isn't carried over")
     expect(NSDocument.posixPermissions(at: directory.appendingPathComponent("missing")) == nil,
            "a missing source has no permissions")
+    let link = directory.appendingPathComponent("link")
+    try! FileManager.default.createSymbolicLink(at: link, withDestinationURL: key)
+    expect(NSDocument.posixPermissions(at: link) == 0o600,
+           "a symbolic link's target gives the permissions, not the link")
 
     let opened = NSDocument()
     opened.fileURL = key
