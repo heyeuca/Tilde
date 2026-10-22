@@ -427,9 +427,6 @@ final class MarkdownStyler: NSObject, @MainActor SyntaxHighlighting {
     private static let italicPattern = try! NSRegularExpression(
         pattern: "(?<!\\*)\\*(?![\\s*])([^*\\n]+?)(?<=\\S)\\*(?!\\*)|(?<![\\w_])_(?![\\s_])([^_\\n]+?)(?<=\\S)_(?![\\w_])"
     )
-    private static let linkPattern = try! NSRegularExpression(
-        pattern: "!?\\[([^\\]\\n]*)\\]\\(([^)\\n]*)\\)"
-    )
 
     private func styleInline(in lineText: String, range: NSRange, lineLocation: Int, storage: NSTextStorage) {
         guard range.length > 0 else { return }
@@ -461,20 +458,22 @@ final class MarkdownStyler: NSObject, @MainActor SyntaxHighlighting {
             consumed.append(match.range)
         }
 
-        // Links: dim brackets and URL, tint the text.
-        Self.linkPattern.enumerateMatches(in: lineText, range: range) { match, _, _ in
-            guard let match, isFree(match.range) else { return }
-            storage.addAttribute(.foregroundColor, value: EditorTheme.markerColor, range: absolute(match.range))
-            storage.addAttribute(.foregroundColor, value: EditorTheme.linkColor, range: absolute(match.range(at: 1)))
-            // Tag the whole link (not an image) for ⌘-click. A badge
-            // `[![alt](img)](url)` matches only up to the image here, so its
-            // target would be the image URL: leave it untagged (#38).
-            let text = (lineText as NSString).substring(with: match.range(at: 1))
-            if (lineText as NSString).character(at: match.range.location) != 0x21, !text.hasPrefix("![") {
-                let target = (lineText as NSString).substring(with: match.range(at: 2))
-                storage.addAttribute(Self.linkTargetKey, value: target, range: absolute(match.range))
+        // Links: dim brackets and URL, tint the text. A badge's image is
+        // styled the same way inside its link's text.
+        let line = lineText as NSString
+        func styleLink(_ link: InlineLink) {
+            storage.addAttribute(.foregroundColor, value: EditorTheme.markerColor, range: absolute(link.range))
+            storage.addAttribute(.foregroundColor, value: EditorTheme.linkColor, range: absolute(link.text))
+            for inner in Self.inlineLinks(in: line, range: link.text) { styleLink(inner) }
+        }
+        for link in Self.inlineLinks(in: line, range: range) where isFree(link.range) {
+            styleLink(link)
+            // Tag the whole link (not an image) for ⌘-click, a badge's
+            // image included, so a click anywhere on it goes to the link.
+            if !link.isImage {
+                storage.addAttribute(Self.linkTargetKey, value: line.substring(with: link.destination), range: absolute(link.range))
             }
-            consumed.append(match.range)
+            consumed.append(link.range)
         }
 
         Self.boldPattern.enumerateMatches(in: lineText, range: range) { match, _, _ in

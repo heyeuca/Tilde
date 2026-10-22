@@ -20,6 +20,111 @@ extension MarkdownStyler {
         return text.attribute(linkTargetKey, at: index, effectiveRange: nil) as? String
     }
 
+    // MARK: - Inline links
+
+    /// One `[text](destination)` or `![alt](src)` on a line, as ranges into
+    /// that line.
+    struct InlineLink {
+        let range: NSRange
+        let text: NSRange
+        let destination: NSRange
+        let isImage: Bool
+    }
+
+    /// The inline links and images in `range` of one line, left to right.
+    ///
+    /// A scanner rather than a regex so the shapes Reader follows hold
+    /// together (#38): balanced parentheses stay in the destination
+    /// (`…/Foo_(bar)`), link text may nest one level of brackets — so a
+    /// badge `[![CI](img)](url)` is one link — and backslash-escaped
+    /// brackets and parentheses don't count.
+    static func inlineLinks(in line: NSString, range: NSRange) -> [InlineLink] {
+        var links: [InlineLink] = []
+        let end = NSMaxRange(range)
+        var i = range.location
+        while i < end {
+            let c = line.character(at: i)
+            if c == Char.backslash { i += 2; continue }
+            let isImage = c == Char.bang && i + 1 < end && line.character(at: i + 1) == Char.openBracket
+            if c == Char.openBracket || isImage,
+               let link = inlineLink(in: line, at: i, end: end, isImage: isImage) {
+                links.append(link)
+                i = NSMaxRange(link.range)
+            } else {
+                i += 1
+            }
+        }
+        return links
+    }
+
+    private static func inlineLink(in line: NSString, at start: Int, end: Int, isImage: Bool) -> InlineLink? {
+        // Text: up to the `]` that closes the opening bracket.
+        let textStart = start + (isImage ? 2 : 1)
+        var depth = 1
+        var i = textStart
+        scanText: while i < end {
+            switch line.character(at: i) {
+            case Char.backslash: i += 1
+            case Char.newline, Char.carriageReturn: return nil
+            case Char.openBracket:
+                depth += 1
+                if depth > 2 { return nil }
+            case Char.closeBracket:
+                depth -= 1
+                if depth == 0 { break scanText }
+            default: break
+            }
+            i += 1
+        }
+        guard depth == 0, i + 1 < end, line.character(at: i + 1) == Char.openParen else { return nil }
+        let textEnd = i
+
+        // Destination: up to the `)` that closes the opening parenthesis.
+        // Balanced pairs inside belong to the URL, as does all of a `<…>`.
+        let destinationStart = textEnd + 2
+        depth = 1
+        var inAngle = false
+        var atStart = true
+        i = destinationStart
+        scanDestination: while i < end {
+            let c = line.character(at: i)
+            switch c {
+            case Char.backslash: i += 1
+            case Char.newline, Char.carriageReturn: return nil
+            case _ where inAngle: if c == Char.closeAngle { inAngle = false }
+            case Char.openAngle where atStart: inAngle = true
+            case Char.openParen: depth += 1
+            case Char.closeParen:
+                depth -= 1
+                if depth == 0 { break scanDestination }
+            default: break
+            }
+            if c != Char.space { atStart = false }
+            i += 1
+        }
+        guard depth == 0 else { return nil }
+        return InlineLink(
+            range: NSRange(location: start, length: i + 1 - start),
+            text: NSRange(location: textStart, length: textEnd - textStart),
+            destination: NSRange(location: destinationStart, length: i - destinationStart),
+            isImage: isImage
+        )
+    }
+
+    private enum Char {
+        static let backslash = unichar(UInt8(ascii: "\\"))
+        static let bang = unichar(UInt8(ascii: "!"))
+        static let openBracket = unichar(UInt8(ascii: "["))
+        static let closeBracket = unichar(UInt8(ascii: "]"))
+        static let openParen = unichar(UInt8(ascii: "("))
+        static let closeParen = unichar(UInt8(ascii: ")"))
+        static let openAngle = unichar(UInt8(ascii: "<"))
+        static let closeAngle = unichar(UInt8(ascii: ">"))
+        static let space = unichar(UInt8(ascii: " "))
+        static let newline = unichar(UInt8(ascii: "\n"))
+        static let carriageReturn = unichar(UInt8(ascii: "\r"))
+    }
+
     private static let atxHeadingPattern = try! NSRegularExpression(pattern: "^ {0,3}#{1,6}(?:[ \\t]+|$)")
     private static let fencePattern = try! NSRegularExpression(pattern: "^ {0,3}(`{3,}|~{3,})")
 

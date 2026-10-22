@@ -159,13 +159,68 @@ do {
     expect(target(at: -1) == nil && target(at: ns.length) == nil, "link detection: out-of-range index")
 }
 
+// MARK: - Link shapes (#38)
+
 do {
-    // The link regex stops at the image (#38), so a badge must not carry the image URL.
+    // Balanced parentheses belong to the URL.
+    let text = "see [Foo](https://en.wikipedia.org/wiki/Foo_(bar)) now\n"
+    let s = styled(text)
+    let ns = text as NSString
+    let close = ns.range(of: "bar))").location + 4
+    expect(color(s, at: close) == EditorTheme.markerColor, "link: closing paren after a balanced pair is dimmed")
+    expect(color(s, at: close + 1) == NSColor.textColor, "link: text after the link is body color")
+    expect(MarkdownStyler.linkTarget(at: ns.range(of: "Foo").location, in: s) == "https://en.wikipedia.org/wiki/Foo_(bar)",
+           "link detection: URL keeps its balanced parentheses")
+    expect(MarkdownStyler.linkTarget(at: close, in: s) != nil, "link detection: on the final closing paren")
+}
+
+do {
+    // A badge is one link to the outer URL, its image styled inside it.
     let text = "[![CI](https://img.shields.io/b.svg)](https://github.com/x/actions)\n"
     let s = styled(text)
     let ns = text as NSString
-    expect(MarkdownStyler.linkTarget(at: ns.range(of: "CI").location, in: s) == nil, "link detection: badge alt text is not tagged with the image URL")
-    expect(MarkdownStyler.linkTarget(at: ns.range(of: "actions").location, in: s) == nil, "link detection: badge outer URL not tagged either")
+    func target(at i: Int) -> String? { MarkdownStyler.linkTarget(at: i, in: s) }
+    expect(color(s, at: ns.range(of: "CI").location) == EditorTheme.linkColor, "badge: alt text tinted")
+    expect(color(s, at: ns.range(of: "![").location) == EditorTheme.markerColor, "badge: image marker dimmed")
+    expect(color(s, at: ns.range(of: "img.shields").location) == EditorTheme.markerColor, "badge: image URL dimmed")
+    expect(color(s, at: ns.range(of: "](https://github").location) == EditorTheme.markerColor, "badge: outer ]( dimmed")
+    expect(color(s, at: ns.range(of: "actions").location) == EditorTheme.markerColor, "badge: outer URL dimmed")
+    for probe in ["[!", "CI", "img.shields", "actions"] {
+        expect(target(at: ns.range(of: probe).location) == "https://github.com/x/actions",
+               "link detection: badge \(probe.debugDescription) goes to the outer URL")
+    }
+}
+
+do {
+    // The parenthesis rule doesn't reach past the link.
+    for text in ["[a](b) (c)\n", "[a](b)c)\n"] {
+        let s = styled(text)
+        expect(MarkdownStyler.linkTarget(at: 1, in: s) == "b", "link detection: \(text.debugDescription) targets b")
+        expect(MarkdownStyler.linkTarget(at: 6, in: s) == nil, "link detection: \(text.debugDescription) stops at the first link")
+        expect(color(s, at: (text as NSString).length - 2) == NSColor.textColor, "link: \(text.debugDescription) trailing ) is body color")
+    }
+}
+
+do {
+    // Backslash-escaped brackets and parentheses don't end the link.
+    let text = "[a \\] b](https://x.example) and [c](https://x.example/\\))\n"
+    let s = styled(text)
+    let ns = text as NSString
+    expect(color(s, at: ns.range(of: "] b").location + 2) == EditorTheme.linkColor, "link: text after an escaped ] is tinted")
+    expect(MarkdownStyler.linkTarget(at: 1, in: s) == "https://x.example", "link detection: escaped ] stays in the text")
+    let last = ns.length - 2
+    expect(MarkdownStyler.linkTarget(at: last, in: s) == "https://x.example/\\)", "link detection: escaped ) stays in the URL")
+    expect(MarkdownLink.url(fromTarget: "https://x.example/\\)")?.absoluteString == "https://x.example/)",
+           "link target: backslash escape resolved")
+    expect(MarkdownLink.url(fromTarget: "a\\b.md")?.absoluteString == "a%5Cb.md", "link target: backslash before a letter is kept")
+}
+
+do {
+    // Angle brackets hold unbalanced parentheses.
+    let text = "[a](<https://x.example/(b>) c\n"
+    let s = styled(text)
+    expect(MarkdownStyler.linkTarget(at: 1, in: s) == "<https://x.example/(b>", "link detection: <…> holds an unbalanced (")
+    expect(color(s, at: (text as NSString).length - 2) == NSColor.textColor, "link: text after a <…> link is body color")
 }
 
 do {
@@ -842,11 +897,30 @@ do {
     expect(MarkdownEditing.linkableURL(from: "https://") == nil, "a scheme alone is not a URL")
     expect(MarkdownEditing.linkableURL(from: "") == nil, "empty clipboard is not a URL")
     let wiki = MarkdownEditing.linkableURL(from: "https://en.wikipedia.org/wiki/Swift_(programming_language)")
-    expect(wiki == "https://en.wikipedia.org/wiki/Swift_%28programming_language%29", "parentheses are percent-encoded")
+    expect(wiki == "https://en.wikipedia.org/wiki/Swift_(programming_language)", "balanced parentheses stay raw")
+    expect(MarkdownEditing.linkableURL(from: "https://x.example/a)b") == "<https://x.example/a)b>", "an unbalanced ) is wrapped in <…>")
+    expect(MarkdownEditing.linkableURL(from: "https://x.example/(a") == "<https://x.example/(a>", "an unbalanced ( is wrapped in <…>")
+    expect(MarkdownEditing.linkableURL(from: "https://x.example/)<a>") == "https://x.example/%29<a>", "an unbalanced ) next to <> is percent-encoded")
     let text = "read this\n"
-    let linked = applying(MarkdownEditing.link(in: text as NSString, selection: sel(text, "this"), url: wiki), to: text)!
-    let urlEnd = (linked.text as NSString).range(of: "%29").location + 2
-    expect(color(styled(linked.text), at: urlEnd) == EditorTheme.markerColor, "an encoded URL stays inside one styled link")
+    for url in [wiki!, "<https://x.example/a)b>"] {
+        let linked = applying(MarkdownEditing.link(in: text as NSString, selection: sel(text, "this"), url: url), to: text)!
+        let s = styled(linked.text)
+        expect(color(s, at: (linked.text as NSString).length - 2) == EditorTheme.markerColor, "\(url) stays inside one styled link")
+        expect(MarkdownStyler.linkTarget(at: 6, in: s) == url, "\(url) is the link's target")
+    }
+}
+
+do {
+    // ⌘K escapes brackets in the link text, keeping existing escapes.
+    func linked(_ text: String) -> String? {
+        applying(MarkdownEditing.link(in: text as NSString, selection: NSRange(location: 0, length: (text as NSString).length), url: "https://x.org"), to: text)?.text
+    }
+    expect(linked("a ] b") == "[a \\] b](https://x.org)", "⌘K escapes ] in the text")
+    expect(linked("[x]") == "[\\[x\\]](https://x.org)", "⌘K escapes [ and ] in the text")
+    expect(linked("a \\* b") == "[a \\* b](https://x.org)", "⌘K keeps an existing escape")
+    expect(linked("a\\") == "[a\\\\](https://x.org)", "⌘K escapes a trailing backslash")
+    let s = styled(linked("a ] b")! + "\n")
+    expect(MarkdownStyler.linkTarget(at: 1, in: s) == "https://x.org", "an escaped ⌘K link is one styled link")
 }
 
 print("\n\(passed) passed, \(failed) failed")
