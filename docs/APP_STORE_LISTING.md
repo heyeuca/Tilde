@@ -1,4 +1,4 @@
-# App Store Connect Listing (Tilde v1.3.0)
+# App Store Connect Listing (Tilde v1.4.0)
 
 The limits below are App Store Connect's. Run `python3 scripts/check_listing.py` before pasting any field into App Store Connect: it checks every field's length and its characters.
 
@@ -29,7 +29,7 @@ Describe any other character in words, as What's New does for control codes ("sh
 | --- | --- |
 | Bundle ID | `co.euca.Tilde` |
 | SKU | `tilde-macos` |
-| Version | `1.3.0` |
+| Version | `1.4.0` |
 | Primary Language | English (U.S.) |
 | Primary Category | Productivity |
 | Secondary Category | Developer Tools |
@@ -128,6 +128,7 @@ MARKDOWN, DONE LIGHTLY
 • Reader mode (⌘⇧R): a fully rendered, read-only view with tables, highlighted code blocks and task-list checkboxes; toggle it from the title bar like Safari's Reader
 • YAML frontmatter stays quiet in the editor and becomes a tidy header in Reader: the title on top, the other fields as rows
 • ⌘-click a link in the editor to follow it: jump to a heading, open a local file, or open a web page
+• Format menu: ⌘B for bold, ⌘I for italic, ⌘K to turn the selection into a link to a copied URL. Type * or ` over a selection to wrap it
 
 PLAIN TEXT AND CONFIG FILES
 • Opens .txt, .md, .markdown and most UTF-based text files: .json, .yaml, .toml, .xml, .csv, .log, .env and more — even files with no extension, like Dockerfile or SSH keys
@@ -158,9 +159,10 @@ Just open the file.
 
 **What's New in This Version**
 ```
-• Tab follows each file's indentation: spaces at the file's own width in a space-indented file, a tab otherwise, and always spaces in YAML. With several lines selected, Tab indents them and ⇧Tab outdents them
-• Invisible characters get a faint mark in the editor: zero-width spaces, byte-order marks, bidirectional controls, and no-break and full-width spaces. Control codes such as NUL and ESC show as dimmed symbols. Saving, copying and Find still see the original characters
-• ⌘-click a Markdown link in the editor to follow it the way Reader does: a #heading link scrolls to the heading, a link to a local file opens it, and a web link opens in your browser
+• New Format menu for Markdown: Bold (⌘B) and Italic (⌘I) wrap the selection in Markdown markers or take them off, and Add Link (⌘K) turns the selection into a link, using a URL you have copied. Typing *, _, `, ~, [, ( or " over a selection wraps it instead of replacing it
+• Copying a task list from Reader as plain text now gives empty and checked box characters instead of an invisible placeholder
+• Links whose address contains parentheses, like Wikipedia's, and README badges are now styled as one link in the editor, and ⌘-click opens the full address
+• Save As and Duplicate keep a file's extension, such as .json or .sh, and its permissions, so a copy of a private key stays private
 ```
 
 ---
@@ -202,6 +204,7 @@ README를 잠깐 확인하거나 설정 파일 한 줄을 고치거나 Markdown 
 • Reader 모드(⌘⇧R): 표, 코드 하이라이팅, 작업 목록 체크박스를 포함한 완전 렌더링 읽기 전용 화면. Safari의 읽기 도구처럼 타이틀 바에서 전환
 • YAML 프론트매터는 편집기에서 조용히 표시되고, Reader 모드에서는 맨 위의 제목과 행으로 정리된 항목으로 보여 줍니다
 • 편집기에서 링크를 ⌘-클릭하면 따라갑니다: 제목으로 이동하거나, 로컬 파일이나 웹 페이지를 엽니다
+• 포맷 메뉴: ⌘B로 볼드체, ⌘I로 이탤릭체, ⌘K로 선택한 텍스트를 복사해 둔 URL의 링크로 만듭니다. 선택한 텍스트 위에 * 나 `를 입력하면 감쌉니다
 
 일반 텍스트와 설정 파일
 • .txt, .md, .markdown은 물론 .json, .yaml, .toml, .xml, .csv, .log, .env 등 대부분의 UTF 기반 텍스트 파일 지원. Dockerfile이나 SSH 키처럼 확장자가 없는 파일도 열림
@@ -232,9 +235,10 @@ Tilde는 MIT 라이선스의 오픈 소스입니다.
 
 **What's New in This Version**
 ```
-• Tab이 파일의 들여쓰기를 따릅니다. 공백으로 들여쓴 파일에서는 파일이 쓰는 너비만큼 공백을, 그 밖에는 탭을 넣고, YAML에서는 항상 공백을 넣습니다. 여러 줄을 선택하면 Tab으로 들여쓰고 ⇧Tab으로 내어씁니다
-• 편집기에서 보이지 않는 문자를 옅게 표시합니다. 폭 없는 공백, BOM, 양방향 제어 문자, 줄바꿈 없는 공백과 전각 공백이 대상이고, NUL이나 ESC 같은 제어 문자는 흐린 기호로 보입니다. 저장, 복사, 찾기에는 원래 문자가 그대로 쓰입니다
-• 편집기에서 Markdown 링크를 ⌘-클릭하면 Reader처럼 따라갑니다. #제목 링크는 그 제목으로 스크롤하고, 로컬 파일 링크는 그 파일을 열고, 웹 링크는 브라우저로 엽니다
+• Markdown용 포맷 메뉴가 생겼습니다. 볼드체(⌘B)와 이탤릭체(⌘I)는 선택한 텍스트를 Markdown 기호로 감싸거나 기호를 걷어 내고, 링크 추가(⌘K)는 복사해 둔 URL로 선택한 텍스트를 링크로 만듭니다. 텍스트를 선택한 채 *, _, `, ~, [, (, "를 입력하면 지우지 않고 감쌉니다
+• Reader에서 작업 목록을 일반 텍스트로 복사하면 보이지 않는 대체 문자 대신 빈 상자와 체크된 상자 문자가 들어갑니다
+• 위키백과처럼 주소에 괄호가 들어간 링크와 README 배지를 편집기에서 하나의 링크로 표시하고, ⌘-클릭하면 전체 주소를 엽니다
+• 다른 이름으로 저장과 복제가 .json, .sh 같은 확장자와 파일 권한을 유지합니다. 비밀 키의 사본도 나만 읽을 수 있게 남습니다
 ```
 
 ---
@@ -276,6 +280,7 @@ READMEをちょっと確認する、設定ファイルを一行直す、Markdown
 • リーダーモード(⌘⇧R): 表やコードハイライト、タスクリストのチェックボックスを含む完全レンダリングの読み取り専用表示。Safariのリーダーのようにタイトルバーから切り替え
 • YAMLフロントマターはエディタでは控えめに表示し、リーダーモードではタイトルを先頭に、ほかの項目を行に並べたヘッダーとして表示
 • エディタでリンクを⌘-クリックしてたどれます: 見出しへ移動、ローカルファイルやWebページを開く
+• フォーマットメニュー: ⌘Bでボールド、⌘Iでイタリック、⌘Kで選択範囲をコピーしたURLへのリンクに。選択範囲の上で * や ` を入力すると囲みます
 
 プレーンテキストと設定ファイル
 • .txt、.md、.markdownに加え、.json、.yaml、.toml、.xml、.csv、.log、.envなどUTF系テキストファイルの多くを開けます。Dockerfileや SSH鍵など、拡張子のないファイルも開けます
@@ -306,9 +311,10 @@ TildeはMITライセンスのオープンソースです。
 
 **What's New in This Version**
 ```
-• Tabがファイルのインデントに従うようになりました。スペースでインデントされたファイルではファイルと同じ幅のスペースを、それ以外ではタブを入力し、YAMLでは常にスペースを入力します。複数行を選択すると、Tabでインデント、⇧Tabでアウトデントします
-• エディタで見えない文字を淡く表示します。ゼロ幅スペース、BOM、双方向制御文字、ノーブレークスペースや全角スペースが対象で、NULやESCなどの制御文字は淡い記号として表示されます。保存、コピー、検索では元の文字がそのまま使われます
-• エディタでMarkdownのリンクを⌘-クリックすると、リーダーモードと同じようにたどれます。#見出しリンクはその見出しまでスクロールし、ローカルファイルへのリンクはそのファイルを開き、Webリンクはブラウザで開きます
+• Markdown用のフォーマットメニューを追加しました。ボールド(⌘B)とイタリック(⌘I)は選択範囲をMarkdownの記号で囲む、または記号を外します。リンクを追加(⌘K)は、コピーしたURLで選択範囲をリンクにします。テキストを選択したまま *、_、`、~、[、(、" を入力すると、置き換えずに囲みます
+• リーダーモードでタスクリストをプレーンテキストとしてコピーすると、見えない代替文字ではなく、空のチェックボックスとチェック済みのチェックボックスの文字になります
+• Wikipediaのように括弧を含むアドレスのリンクやREADMEのバッジを、エディタで1つのリンクとして表示し、⌘-クリックでアドレス全体を開きます
+• 「別名で保存」と「複製」で、.jsonや.shなどの拡張子とファイルのアクセス権を保つようになりました。秘密鍵のコピーも自分だけが読める状態のままです
 ```
 
 ---
@@ -350,6 +356,7 @@ Tilde 是一款小巧而美观的 macOS 文本编辑器,为这样的人而生:�
 • 阅读模式(⌘⇧R):完整渲染的只读视图,支持表格、代码高亮和任务列表复选框;像 Safari 阅读器一样从标题栏切换
 • YAML front matter 在编辑器中安静显示,在阅读模式中呈现为整洁的标题区:标题在上,其余字段逐行排列
 • 在编辑器中按住 ⌘ 点按链接即可跟随:跳到标题,或打开本地文件和网页
+• 格式菜单:⌘B 粗体,⌘I 斜体,⌘K 将所选文本变成指向已拷贝网址的链接。选中文本后输入 * 或 ` 即可包裹
 
 纯文本与配置文件
 • 支持 .txt、.md、.markdown,以及 .json、.yaml、.toml、.xml、.csv、.log、.env 等大多数 UTF 编码文本文件,包括 Dockerfile、SSH 密钥等没有扩展名的文件
@@ -380,7 +387,8 @@ Tilde 基于 MIT 许可证开源。
 
 **What's New in This Version**
 ```
-• Tab 现在跟随文件的缩进:在用空格缩进的文件中按文件自身宽度插入空格,其他情况插入制表符,YAML 文件始终插入空格。选中多行时,Tab 整体缩进,⇧Tab 整体取消缩进
-• 编辑器会以淡色标出不可见字符:零宽空格、BOM、双向控制字符、不换行空格和全角空格;NUL、ESC 等控制字符显示为淡色符号。保存、复制和查找仍使用原始字符
-• 在编辑器中按住 ⌘ 点按 Markdown 链接,即可像阅读模式一样跟随:#标题 链接滚动到该标题,指向本地文件的链接会打开该文件,网页链接在浏览器中打开
+• 新增 Markdown 格式菜单:粗体(⌘B)和斜体(⌘I)用 Markdown 标记包裹所选文本或移除标记,添加链接(⌘K)用已拷贝的网址把所选文本变成链接。选中文本后输入 *、_、`、~、[、( 或 ",会包裹所选文本而不是替换它
+• 在阅读模式中将任务列表拷贝为纯文本时,会得到空框和已勾选框字符,而不是不可见的占位符
+• 网址中含有括号的链接(如维基百科)和 README 徽章现在在编辑器中显示为一个完整链接,按住 ⌘ 点按会打开完整网址
+• 存储为和复制会保留 .json、.sh 等扩展名和文件权限,私钥的副本仍然只有你能读取
 ```

@@ -48,7 +48,7 @@ It is **not** an IDE, a project workspace, a note database, or a Markdown author
 - Open, edit, and save `.txt`, `.md`, and `.markdown` files
 - Opens most UTF-based plain-text files (`.json`, `.yaml`, `.toml`, `.xml`, `.csv`, `.log`, `.env`, and more) as plain text, including files with no extension or an unfamiliar one, like `Dockerfile` or SSH keys (`id_ed25519`, `id_ed25519.pub`)
 - Lightweight Markdown styling that keeps syntax visible while improving readability
-- Reader mode (`⌘⇧R`) — a fully rendered, read-only view of a Markdown document, with tables, highlighted code blocks, task-list checkboxes, and YAML frontmatter as a quiet header (`title:` on top, the other keys as rows); `#fragment` links jump within the document and web links open in your browser. Links and images pointing at neighboring local files work when macOS grants file access — the App Sandbox can block files that live next to the document (a blocked image shows its alt text; a blocked link does nothing). Toggle it from the title bar, just like Safari's Reader
+- Reader mode (`⌘⇧R`) — a fully rendered, read-only view of a Markdown document, with tables, highlighted code blocks, task-list checkboxes (copied as `☐` / `☑︎` in plain text), and YAML frontmatter as a quiet header (`title:` on top, the other keys as rows); `#fragment` links jump within the document and web links open in your browser. Links and images pointing at neighboring local files work when macOS grants file access — the App Sandbox can block files that live next to the document (a blocked image shows its alt text; a blocked link does nothing). Toggle it from the title bar, just like Safari's Reader
 - Quiet syntax highlighting for config files: keys tinted in `.json`, `.yaml`, and `.toml`, everything else left alone
 - Standard editing: undo/redo, cut/copy/paste, drag-and-drop, spell check, Find & Replace
 - Tab follows the file's indentation: spaces at the file's own width, or a tab (YAML always gets spaces); with lines selected, `Tab` and `⇧Tab` indent and outdent them
@@ -67,6 +67,8 @@ For Markdown files, Tilde applies gentle semantic styling. A heading's `#` stays
 Styled elements: headings, bold, italic, strikethrough, inline code, code blocks, blockquotes, links, bullet lists, numbered lists, task lists, and horizontal rules. A leading YAML frontmatter block stays dim and plain, with no Markdown styling inside.
 
 ⌘-click a link to follow it the way Reader does: `#fragment` links scroll to the heading, links to local files open them in their own window when macOS grants access, and web links open in your browser.
+
+**Format ▸ Bold** (`⌘B`), **Italic** (`⌘I`), and **Add Link…** (`⌘K`) wrap the selection in Markdown markers, and `⌘K` uses a URL on the clipboard as the link. Typing `*`, `_`, `` ` ``, `~`, `[`, `(`, or `"` over a selection wraps it instead of replacing it.
 
 ## Keyboard Shortcuts
 
