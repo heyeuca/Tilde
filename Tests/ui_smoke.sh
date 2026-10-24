@@ -9,6 +9,7 @@
 #   3. Lossy-encoding file       → read-only, bytes never change
 #   4. CRLF paste                → normalized to LF; saved bytes stay clean
 #   5. Mixed line endings        → an edit keeps untouched lines' endings
+#   6. ⌘Q with untitled text     → no alert; relaunch brings the text back
 #
 # Scenario 4 uses the clipboard: the current TEXT clipboard is saved and
 # restored, but non-text clipboard content is lost.
@@ -43,8 +44,8 @@ tell_app() { # $1 = System Events statement operating on the process
     osascript -e "tell application \"System Events\" to tell (first process whose unix id is $APP_PID) to $1" 2>/dev/null
 }
 
-launch() { # $@ = extra `open` arguments (a file to open)
-    open -n -a "$APP" "$@" --args -ApplePersistenceIgnoreState YES
+launch() { # $@ = extra `open` arguments (a file to open); IGNORE_STATE=NO restores windows
+    open -n -a "$APP" "$@" --args -ApplePersistenceIgnoreState "${IGNORE_STATE:-YES}"
     for _ in $(seq 1 40); do
         APP_PID="$(pgrep -nf "$BIN")" && [[ -n "$APP_PID" ]] &&
             [[ "$(tell_app 'exists front window')" == "true" ]] && { sleep 0.7; return 0; }
@@ -146,6 +147,51 @@ if launch "$WORK/mixed.txt"; then
     result $? "mixed-ending file keeps untouched lines' endings on ⌘S"
 else
     result 1 "mixed line ending checks (no window)"
+fi
+kill_app
+
+# ── 6. Quit keeps untitled text (#44) ──────────────────────────────────────
+# One untitled window with text and one left blank: ⌘Q quits without the
+# "review before quitting" alert, and the relaunch brings back the text but
+# not the blank window. Both launches keep saved state (a launch that ignores
+# it doesn't save it at quit either); the text goes into a window of its own
+# in case anything else comes back.
+window_texts() { # every window's text, each in brackets
+    local n i out=""
+    n="$(tell_app 'count windows')"
+    for i in $(seq 1 "${n:-0}"); do
+        out+="[$(tell_app "get value of text area 1 of scroll area 1 of group 1 of window $i")]"
+    done
+    echo "$out"
+}
+if IGNORE_STATE=NO launch; then
+    tell_app 'keystroke "n" using command down'
+    sleep 1
+    type_text "hot exit"
+    sleep 0.5
+    tell_app 'keystroke "n" using command down'
+    sleep 1
+    tell_app 'keystroke "q" using command down'
+    for _ in $(seq 1 20); do kill -0 "$APP_PID" 2>/dev/null || break; sleep 0.25; done
+    ! kill -0 "$APP_PID" 2>/dev/null; result $? "⌘Q with untitled text quits without an alert"
+    kill_app
+    if IGNORE_STATE=NO launch; then
+        texts="$(window_texts)"
+        [[ "$texts" == *"[hot exit]"* ]]; result $? "relaunch brings back the untitled text"
+        [[ "$texts" != *"[]"* ]]; result $? "relaunch leaves out the blank untitled window"
+        # Discard what came back so the next run starts clean.
+        for _ in $(seq 1 10); do
+            [[ "$(tell_app 'count windows')" == "0" ]] && break
+            tell_app 'keystroke "w" using command down'
+            sleep 0.7
+            tell_app 'click button "Delete" of sheet 1 of front window' >/dev/null
+            sleep 0.5
+        done
+    else
+        result 1 "relaunch brings back the untitled text (no window)"
+    fi
+else
+    result 1 "quit keeps untitled text (no window)"
 fi
 kill_app
 
