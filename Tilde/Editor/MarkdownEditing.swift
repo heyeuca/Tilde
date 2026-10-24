@@ -114,7 +114,8 @@ nonisolated enum MarkdownEditing {
     // MARK: - Links
 
     /// Makes the selection a link to `url` (already from `linkableURL`), or
-    /// a link with an empty destination when `url` is nil.
+    /// a link with an empty destination when `url` is nil. Brackets in the
+    /// selection are escaped so they can't close the text early (#38).
     ///
     /// The caret lands where typing continues: after the link when it is
     /// complete, inside `()` when the URL is missing, inside `[]` when there
@@ -130,7 +131,7 @@ nonisolated enum MarkdownEditing {
         } else {
             guard let inner = trimmedSingleLine(text, selection) else { return nil }
             range = inner
-            label = text.substring(with: inner)
+            label = escapedLinkText(text.substring(with: inner))
         }
         let replacement = "[\(label)](\(destination))"
         let caret: Int
@@ -146,8 +147,10 @@ nonisolated enum MarkdownEditing {
 
     /// The clipboard text as a link destination when it is exactly one
     /// `http`, `https`, or `mailto` URL once surrounding whitespace is
-    /// trimmed; `nil` otherwise. Parentheses are percent-encoded so the
-    /// destination can't close the link early in the styler or Reader.
+    /// trimmed; `nil` otherwise. Balanced parentheses (Wikipedia's
+    /// `…/Swift_(programming_language)`) stay as they are; unbalanced ones
+    /// would close the link early in the styler or Reader, so that URL is
+    /// wrapped in `<…>`, or percent-encoded when it holds `<` or `>`.
     static func linkableURL(from string: String) -> String? {
         let candidate = string.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !candidate.isEmpty,
@@ -163,9 +166,44 @@ nonisolated enum MarkdownEditing {
         default:
             return nil
         }
+        if hasBalancedParentheses(candidate) { return candidate }
+        if !candidate.contains(where: { $0 == "<" || $0 == ">" }) { return "<\(candidate)>" }
         return candidate
             .replacingOccurrences(of: "(", with: "%28")
             .replacingOccurrences(of: ")", with: "%29")
+    }
+
+    /// Selected text as link text: unescaped `[` and `]` get a backslash,
+    /// as does a trailing backslash that would otherwise escape the
+    /// closing `]`. Existing escapes are kept, so Reader shows the same
+    /// text inside the link as it did outside.
+    private static func escapedLinkText(_ text: String) -> String {
+        var result = ""
+        var escaping = false
+        for character in text {
+            if escaping {
+                result.append(character)
+                escaping = false
+            } else if character == "\\" {
+                result.append(character)
+                escaping = true
+            } else {
+                if character == "[" || character == "]" { result.append("\\") }
+                result.append(character)
+            }
+        }
+        if escaping { result.append("\\") }
+        return result
+    }
+
+    private static func hasBalancedParentheses(_ url: String) -> Bool {
+        var depth = 0
+        for character in url {
+            if character == "(" { depth += 1 }
+            if character == ")" { depth -= 1 }
+            if depth < 0 { return false }
+        }
+        return depth == 0
     }
 
     // MARK: - Helpers

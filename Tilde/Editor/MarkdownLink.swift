@@ -95,8 +95,9 @@ nonisolated enum MarkdownLink {
     }
 
     /// The URL in an editor link's raw `(…)` target: an optional `<…>`
-    /// wrapper and a trailing `"title"` are dropped, and characters a URL
-    /// can't hold (a space in `<my file.md>`) are percent-encoded.
+    /// wrapper and a trailing `"title"` are dropped, backslash escapes
+    /// (`\)`) are resolved, and characters a URL can't hold (a space in
+    /// `<my file.md>`) are percent-encoded.
     static func url(fromTarget raw: String) -> URL? {
         var target = raw.trimmingCharacters(in: .whitespaces)
         if target.hasPrefix("<"), let close = target.firstIndex(of: ">") {
@@ -104,12 +105,36 @@ nonisolated enum MarkdownLink {
         } else if let space = target.firstIndex(where: { $0 == " " || $0 == "\t" }) {
             target = String(target[..<space])
         }
+        target = unescaped(target)
         guard !target.isEmpty else { return nil }
         if let url = URL(string: target) { return url }
         return target.addingPercentEncoding(withAllowedCharacters: urlAllowed).flatMap(URL.init(string:))
     }
 
     private static let urlAllowed = CharacterSet.urlQueryAllowed.union(CharacterSet(charactersIn: "#"))
+
+    /// `text` with CommonMark backslash escapes resolved: a backslash
+    /// before ASCII punctuation is dropped, any other stays.
+    private static func unescaped(_ text: String) -> String {
+        guard text.contains("\\") else { return text }
+        var result = ""
+        var escaping = false
+        for character in text {
+            if escaping {
+                if !asciiPunctuation.contains(character) { result.append("\\") }
+                result.append(character)
+                escaping = false
+            } else if character == "\\" {
+                escaping = true
+            } else {
+                result.append(character)
+            }
+        }
+        if escaping { result.append("\\") }
+        return result
+    }
+
+    private static let asciiPunctuation = Set("!\"#$%&'()*+,-./:;<=>?@[\\]^_`{|}~")
 
     /// Follows a resolved link: an anchor goes to `scrollToAnchor`, a local
     /// file opens as its own document window, and a scheme'd URL goes to
