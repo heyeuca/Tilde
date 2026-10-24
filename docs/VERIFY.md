@@ -41,6 +41,12 @@ runners, and the unsigned smoke bundle).
       stay `-rw-------` (ssh refuses a group/world-readable private key)
 - [ ] The save panel's format menu for a new document gains no
       "Other Text File" / data entry
+- [ ] Save As and Duplicate → ⌘S on `data.json` propose `data.json` /
+      `data copy.json` with File Format "JSON"; the menu still offers
+      Plain Text and Markdown (#39; checked on the smoke bundle)
+- [ ] Duplicate → ⌘S of `id_ed25519` (`-rw-------`) saves a
+      `-rw-------` copy; of a `-rwxr-xr-x` script, an executable copy
+      (#39; checked on the smoke bundle — re-check under the sandbox)
 - [ ] A PNG or PDF picked in the open panel shows the "isn't a text file"
       alert
 - [ ] Tilde does not become the default app for any file type it wasn't
