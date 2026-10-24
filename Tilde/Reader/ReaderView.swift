@@ -327,14 +327,36 @@ struct ReaderView: NSViewRepresentable {
         }
     }
 
-    /// NSTextView that leaves Reader on Esc, and paints one rounded band
-    /// behind each code listing. The renderer tags listings with
-    /// `codeBlockMarker` instead of giving their NSTextBlock a square
-    /// background fill, so the code's "room" keeps the editor's exact
-    /// geometry — same color, same 5pt corners — across ⌘⇧R.
+    /// NSTextView that leaves Reader on Esc, copies checkboxes as text, and
+    /// paints one rounded band behind each code listing. The renderer tags
+    /// listings with `codeBlockMarker` instead of giving their NSTextBlock
+    /// a square background fill, so the code's "room" keeps the editor's
+    /// exact geometry — same color, same 5pt corners — across ⌘⇧R.
     private final class ExitingTextView: NSTextView {
         var onExit: (() -> Void)?
         override func cancelOperation(_ sender: Any?) { onExit?() }
+
+        /// NSTextView still asks for plain text by its legacy name.
+        private static let plainTextTypes: Set<NSPasteboard.PasteboardType> = [
+            .string, NSPasteboard.PasteboardType("NSStringPboardType"),
+        ]
+
+        /// Plain text gets each checkbox as ☐ / ☑︎ instead of U+FFFC
+        /// (`MarkdownRenderer.copyTextKey`). Rich text and every other type
+        /// stay NSTextView's, so the box still pastes as an image where
+        /// attachments are taken.
+        override func writeSelection(to pboard: NSPasteboard, type: NSPasteboard.PasteboardType) -> Bool {
+            let ranges = selectedRanges.map(\.rangeValue).filter { $0.length > 0 }
+            guard Self.plainTextTypes.contains(type), let storage = textStorage, !ranges.isEmpty else {
+                return super.writeSelection(to: pboard, type: type)
+            }
+            // A multiple selection goes one piece per line, as NSTextView
+            // writes it.
+            let text = ranges
+                .map { MarkdownRenderer.copyText(of: storage.attributedSubstring(from: $0)) }
+                .joined(separator: "\n")
+            return pboard.setString(text, forType: type)
+        }
 
         override func drawBackground(in rect: NSRect) {
             super.drawBackground(in: rect)
