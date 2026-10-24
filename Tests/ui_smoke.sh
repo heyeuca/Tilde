@@ -152,41 +152,46 @@ kill_app
 
 # ── 6. Quit keeps untitled text (#44) ──────────────────────────────────────
 # One untitled window with text and one left blank: ⌘Q quits without the
-# "review before quitting" alert, and the relaunch brings back the text but
-# not the blank window. Both launches keep saved state (a launch that ignores
-# it doesn't save it at quit either); the text goes into a window of its own
-# in case anything else comes back.
-window_texts() { # every window's text, each in brackets
-    local n i out=""
-    n="$(tell_app 'count windows')"
-    for i in $(seq 1 "${n:-0}"); do
-        out+="[$(tell_app "get value of text area 1 of scroll area 1 of group 1 of window $i")]"
+# "review before quitting" alert, and the relaunch brings back only the
+# text, still untitled and still edited. Both launches keep saved state (a
+# launch that ignores it doesn't save it at quit either), so whatever an
+# earlier, interrupted run left is discarded first.
+discard_windows() { # closes every window, deleting untitled ones
+    for _ in $(seq 1 10); do
+        [[ "$(tell_app 'count windows')" == "0" ]] && break
+        tell_app 'keystroke "w" using command down'
+        sleep 0.7
+        tell_app 'click button "Delete" of splitter group 1 of sheet 1 of front window' >/dev/null
+        sleep 0.5
     done
-    echo "$out"
 }
+quit_app() { # ⌘Q; returns 0 when the process is gone without an alert
+    tell_app 'keystroke "q" using command down'
+    for _ in $(seq 1 20); do kill -0 "$APP_PID" 2>/dev/null || break; sleep 0.25; done
+    ! kill -0 "$APP_PID" 2>/dev/null
+}
+IGNORE_STATE=NO launch && { discard_windows; quit_app; }
+kill_app
 if IGNORE_STATE=NO launch; then
-    tell_app 'keystroke "n" using command down'
-    sleep 1
     type_text "hot exit"
     sleep 0.5
     tell_app 'keystroke "n" using command down'
     sleep 1
-    tell_app 'keystroke "q" using command down'
-    for _ in $(seq 1 20); do kill -0 "$APP_PID" 2>/dev/null || break; sleep 0.25; done
-    ! kill -0 "$APP_PID" 2>/dev/null; result $? "⌘Q with untitled text quits without an alert"
+    quit_app; result $? "⌘Q with untitled text quits without an alert"
     kill_app
     if IGNORE_STATE=NO launch; then
-        texts="$(window_texts)"
-        [[ "$texts" == *"[hot exit]"* ]]; result $? "relaunch brings back the untitled text"
-        [[ "$texts" != *"[]"* ]]; result $? "relaunch leaves out the blank untitled window"
-        # Discard what came back so the next run starts clean.
-        for _ in $(seq 1 10); do
-            [[ "$(tell_app 'count windows')" == "0" ]] && break
-            tell_app 'keystroke "w" using command down'
-            sleep 0.7
-            tell_app 'click button "Delete" of sheet 1 of front window' >/dev/null
-            sleep 0.5
-        done
+        [[ "$(tell_app 'count windows')" == "1" ]]
+        result $? "relaunch brings back one window, not the blank one"
+        [[ "$(editor_text)" == "hot exit" ]]; result $? "relaunch brings back the untitled text"
+        [[ "$(tell_app 'get name of front window')" == Untitled* ]]
+        result $? "restored window is still untitled"
+        tell_app 'keystroke "w" using command down'
+        sleep 0.7
+        [[ "$(tell_app 'count sheets of front window')" == "1" ]]
+        result $? "restored window is still edited (⌘W asks to save)"
+        tell_app 'click button "Delete" of splitter group 1 of sheet 1 of front window' >/dev/null
+        sleep 0.5
+        discard_windows   # so the next run starts clean
     else
         result 1 "relaunch brings back the untitled text (no window)"
     fi

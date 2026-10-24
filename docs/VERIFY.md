@@ -93,8 +93,9 @@ a release build.
 - [ ] Untitled windows that are blank, never typed in or emptied, don't come
       back, and a launch that restores something adds no blank window. A
       launch that restores nothing opens one blank Untitled window
-- [ ] Typing text into an untitled window, deleting all of it, then ⌘W:
-      closes without asking. Undo back to the empty text: same
+- [ ] Typing text into an untitled window, deleting all of it (Delete key,
+      or ⌘A then Delete), then ⌘W: closes without asking. Undo back to the
+      empty text: same
 - [ ] File-backed document with recent edits: edits are on disk at quit, and
       the window reopens to the same file
 - [ ] Force quit: text autosaved before the kill comes back. Text typed in

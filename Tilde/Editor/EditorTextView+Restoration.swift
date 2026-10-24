@@ -38,20 +38,27 @@ extension EditorTextView {
         }
     }
 
-    /// Undo after typing and then deleting everything returns to the same
-    /// empty text, so `didChangeText` may not fire, but the document counts
-    /// the undo as an edit away from the cleared state. Check again once
-    /// the document has counted it.
+    /// The document counts edits from its undo manager, sometimes after
+    /// `didChangeText` has cleared them, so check again once it has:
+    /// - An edit that opens its own undo group (⌘A then Delete) is counted
+    ///   when the group closes at the end of the event.
+    /// - Undo after typing and then deleting everything returns to the same
+    ///   empty text, so `didChangeText` may not fire, but the undo counts as
+    ///   an edit away from the cleared state.
     func observeUndoForRestorability() {
-        for name in [Notification.Name.NSUndoManagerDidUndoChange, .NSUndoManagerDidRedoChange] {
+        for name in [
+            Notification.Name.NSUndoManagerDidCloseUndoGroup,
+            .NSUndoManagerDidUndoChange,
+            .NSUndoManagerDidRedoChange,
+        ] {
             NotificationCenter.default.removeObserver(self, name: name, object: nil)
             NotificationCenter.default.addObserver(
-                self, selector: #selector(undoManagerDidUndoOrRedo(_:)), name: name, object: nil
+                self, selector: #selector(undoManagerDidChange(_:)), name: name, object: nil
             )
         }
     }
 
-    @objc private func undoManagerDidUndoOrRedo(_ notification: Notification) {
+    @objc private func undoManagerDidChange(_ notification: Notification) {
         guard let undoManager, notification.object as? UndoManager === undoManager else { return }
         DispatchQueue.main.async { [weak self] in
             self?.updateWindowRestorability()

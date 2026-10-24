@@ -336,7 +336,7 @@ Display the file's contents immediately.
 
 ### Launching the App from the Dock
 
-Create a new blank document.
+Create a new blank document, unless windows are restored (see below).
 
 The MVP does not include a custom start screen with a list of recent files.
 
