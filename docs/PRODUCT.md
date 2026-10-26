@@ -344,9 +344,14 @@ Use the standard macOS **File → Open Recent** menu instead.
 
 ### Quitting and Relaunching
 
-Quitting keeps windows. An untitled window with text comes back on the next
-launch with its text, still untitled, with no alert at quit. Blank untitled
-windows don't come back. A launch that restores windows adds no blank one.
+By default, quitting keeps windows. An untitled window with text comes back
+on the next launch with its text, still untitled, with no alert at quit.
+Blank untitled windows don't come back. A launch that restores windows adds
+no blank one.
+
+A user who has explicitly chosen to close windows when quitting (System
+Settings → Desktop & Dock, which stores `NSQuitAlwaysKeepsWindows` false)
+keeps macOS's standard alert and gets no windows back.
 
 Closing a window stays deliberate: ⌘W on an untitled window with text still
 asks whether to save.
