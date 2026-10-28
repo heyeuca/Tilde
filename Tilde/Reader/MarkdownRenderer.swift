@@ -99,6 +99,26 @@ nonisolated struct MarkdownRenderer {
             let rendered = CGFloat(text.length)
             return (prefix + (rendered - prefix) * bodyFraction) / rendered
         }
+
+        /// The inverse of `renderedFraction(forSourceFraction:sourceLength:)`,
+        /// for leaving Reader: Reader's top line, as a fraction of the
+        /// rendered text, mapped back onto the whole source. A position in
+        /// the header maps to the top of the source. `renderedLength` and
+        /// `prefixLength` default to this rendering's; pass the installed
+        /// ones when the header was unfolded since.
+        func sourceFraction(forRenderedFraction fraction: CGFloat, sourceLength: Int,
+                            renderedLength: Int? = nil, prefixLength: Int? = nil) -> CGFloat {
+            let fraction = max(0, min(1, fraction))
+            guard hiddenLength > 0 else { return fraction }
+            let rendered = CGFloat(renderedLength ?? text.length)
+            let prefix = CGFloat(prefixLength ?? self.prefixLength)
+            let hidden = CGFloat(hiddenLength)
+            let source = CGFloat(sourceLength)
+            let offset = fraction * rendered
+            guard offset > prefix, rendered > prefix, source > hidden else { return 0 }
+            let bodyFraction = (offset - prefix) / (rendered - prefix)
+            return max(0, min(1, (hidden + (source - hidden) * bodyFraction) / source))
+        }
     }
 
     /// Indentation added per list-nesting level and for blockquotes.

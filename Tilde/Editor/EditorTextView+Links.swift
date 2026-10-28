@@ -110,7 +110,7 @@ extension EditorTextView {
     /// Scrolls the line holding `index` to where the first line sits at the
     /// top of the document: below the title bar (the scroll view's top
     /// content inset) and the text container's top padding.
-    private func scrollToTop(characterIndex index: Int) {
+    func scrollToTop(characterIndex index: Int) {
         guard let layoutManager = textLayoutManager,
               let contentManager = layoutManager.textContentManager,
               let location = contentManager.location(contentManager.documentRange.location, offsetBy: index)
