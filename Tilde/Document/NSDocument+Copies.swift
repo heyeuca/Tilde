@@ -24,11 +24,11 @@ import UniformTypeIdentifiers
 /// - `duplicate()`: the duplicate is read back from a copy AppKit writes
 ///   without group and other access, so it is handed the source's
 ///   permissions instead.
-/// - `fileNameExtension(forType:saveOperation:)`: for a file whose type
-///   the panel can't list (no extension, like `id_ed25519`, or an unknown
-///   one, like `.pub`), the copy keeps the source's extension, or none,
-///   instead of Plain Text's `.txt`. Picking another format still applies
-///   that format's extension.
+/// - `prepareSavePanel(_:)`: for a file whose type the panel can't list
+///   (no extension, like `id_ed25519`, or an unknown one, like `.pub`),
+///   the proposed name keeps the source's extension, or none, instead of
+///   Plain Text's `.txt`. Picking another format still applies that
+///   format's extension.
 extension NSDocument {
     static func keepFileTypeAndPermissionsOnCopies() {
         _ = exchangeImplementations
@@ -39,8 +39,7 @@ extension NSDocument {
         exchange(#selector(fileAttributesToWrite(to:ofType:for:originalContentsURL:)),
                  #selector(tilde_fileAttributesToWrite(to:ofType:for:originalContentsURL:)))
         exchange(NSSelectorFromString("duplicateAndReturnError:"), #selector(tilde_duplicate))
-        exchange(#selector(fileNameExtension(forType:saveOperation:)),
-                 #selector(tilde_fileNameExtension(forType:saveOperation:)))
+        exchange(#selector(prepareSavePanel(_:)), #selector(tilde_prepareSavePanel(_:)))
     }()
 
     private static func exchange(_ original: Selector, _ replacement: Selector) {
@@ -82,22 +81,26 @@ extension NSDocument {
         return Self.writableTypes(types, listing: fileType)
     }
 
-    /// The extension a copy is saved with. `writableTypes(_:listing:)`
-    /// can't offer the document's type when it has no extension or is
-    /// dynamic, so the panel falls back to the first listed type, Plain
-    /// Text. In that case only, the copy keeps `sourceURL`'s extension, or
-    /// gets none when the source had none; `nil` means no extension.
-    /// Every other case keeps AppKit's `proposed` extension.
-    static func filenameExtension(_ proposed: String?, forType typeName: String,
-                                  documentType: String?, sourceURL: URL?) -> String? {
-        let listed = TextDocument.writableContentTypes.map(\.identifier)
-        guard let documentType, let sourceURL,
-              typeName == listed.first,
-              !listed.contains(documentType),
-              writableTypes(listed, listing: documentType) == listed
-        else { return proposed }
+    /// The name the save panel should propose for a copy of `sourceURL`,
+    /// or `nil` to leave the panel alone. Only for a source the panel can't
+    /// list (`writableTypes(_:listing:)` leaves its type out): no extension
+    /// (`id_ed25519`, `.gitignore`) or an unknown one (`.pub`). The panel
+    /// then falls back to Plain Text and proposes `current` with `.txt`;
+    /// that extension is swapped for the source's, or dropped.
+    static func savePanelName(_ current: String, sourceURL: URL) -> String? {
+        let listed = TextDocument.writableContentTypes
         let ext = sourceURL.pathExtension
-        return ext.isEmpty ? nil : ext
+        if !ext.isEmpty {
+            guard let type = UTType(filenameExtension: ext), !listed.contains(type),
+                  writableTypes(listed.map(\.identifier), listing: type.identifier) == listed.map(\.identifier)
+            else { return nil }
+        }
+        var name = current
+        let currentExt = (current as NSString).pathExtension.lowercased()
+        if listed.contains(where: { $0.tags[.filenameExtension]?.contains(currentExt) == true }) {
+            name = (current as NSString).deletingPathExtension
+        }
+        return ext.isEmpty ? name : name + "." + ext
     }
 
     private static var sourceURLKey = 0
@@ -108,16 +111,29 @@ extension NSDocument {
         set { objc_setAssociatedObject(self, &Self.sourceURLKey, newValue, .OBJC_ASSOCIATION_RETAIN_NONATOMIC) }
     }
 
-    @objc private dynamic func tilde_fileNameExtension(forType typeName: String,
-                                                       saveOperation: SaveOperationType) -> String? {
-        let proposed = tilde_fileNameExtension(forType: typeName, saveOperation: saveOperation)
-        let source: URL?
-        switch saveOperation {
-        case .saveAsOperation: source = fileURL ?? sourceURL
-        case .saveOperation where fileURL == nil: source = sourceURL
-        default: return proposed
+    /// Runs after AppKit has set up the panel (name, File Format menu,
+    /// allowed types) and before it is shown. For Save As, and for a
+    /// duplicate's first save (`fileURL` is still `nil` then), it proposes
+    /// `savePanelName(_:sourceURL:)`, and stops the panel from putting
+    /// `.txt` back: with no extension, no allowed types (the panel appends
+    /// the first allowed type's extension to a bare name); with an unknown
+    /// one, its type is allowed alongside the others. Choosing a format in
+    /// the menu resets the allowed types to that format's, as before.
+    @objc private dynamic func tilde_prepareSavePanel(_ savePanel: NSSavePanel) -> Bool {
+        guard tilde_prepareSavePanel(savePanel) else { return false }
+        guard let source = fileURL ?? sourceURL,
+              let name = Self.savePanelName(savePanel.nameFieldStringValue, sourceURL: source)
+        else { return true }
+        savePanel.allowsOtherFileTypes = true
+        savePanel.isExtensionHidden = false
+        let ext = source.pathExtension
+        if ext.isEmpty {
+            savePanel.allowedContentTypes = []
+        } else if let type = UTType(filenameExtension: ext), !savePanel.allowedContentTypes.contains(type) {
+            savePanel.allowedContentTypes.append(type)
         }
-        return Self.filenameExtension(proposed, forType: typeName, documentType: fileType, sourceURL: source)
+        savePanel.nameFieldStringValue = name
+        return true
     }
 
     // MARK: - Permissions

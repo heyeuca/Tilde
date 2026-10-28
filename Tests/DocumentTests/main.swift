@@ -664,40 +664,25 @@ do {
 // MARK: - Copies of files the save panel can't list keep their extension (#39)
 
 do {
-    let plain = UTType.plainText.identifier
-    let pub = UTType(filenameExtension: "pub")!.identifier
-    let key = URL(fileURLWithPath: "/tmp/id_ed25519")
-    let pubKey = URL(fileURLWithPath: "/tmp/id_ed25519.pub")
-    expect(NSDocument.filenameExtension("txt", forType: plain, documentType: UTType.data.identifier, sourceURL: key) == nil,
-           "an extension-less file's copy gets no extension")
-    expect(NSDocument.filenameExtension("txt", forType: plain, documentType: pub, sourceURL: pubKey) == "pub",
-           "an unknown extension (.pub) is kept")
-    expect(NSDocument.filenameExtension("md", forType: UTType.markdown.identifier, documentType: pub, sourceURL: pubKey) == "md",
-           "picking another format applies its extension")
-    expect(NSDocument.filenameExtension("json", forType: UTType.json.identifier, documentType: UTType.json.identifier,
-                                        sourceURL: URL(fileURLWithPath: "/tmp/data.json")) == "json",
-           "a type the panel lists is left to AppKit")
-    expect(NSDocument.filenameExtension("txt", forType: plain, documentType: plain,
-                                        sourceURL: URL(fileURLWithPath: "/tmp/notes.txt")) == "txt",
-           "a plain text file keeps .txt")
-    expect(NSDocument.filenameExtension("txt", forType: plain, documentType: UTType.data.identifier, sourceURL: nil) == "txt",
-           "a new document keeps .txt")
-
-    NSDocument.keepFileTypeAndPermissionsOnCopies()
-    let opened = NSDocument()
-    opened.fileURL = key
-    opened.fileType = UTType.data.identifier
-    expect(opened.fileNameExtension(forType: plain, saveOperation: .saveAsOperation) == nil,
-           "Save As of id_ed25519 proposes no extension")
-    let duplicate = NSDocument()
-    duplicate.fileType = pub
-    duplicate.sourceURL = pubKey
-    expect(duplicate.fileNameExtension(forType: plain, saveOperation: .saveOperation) == "pub",
-           "a duplicate of id_ed25519.pub saves with .pub")
-    opened.fileType = pub
-    opened.fileURL = pubKey
-    expect(opened.fileNameExtension(forType: plain, saveOperation: .autosaveInPlaceOperation) != "pub",
-           "autosave is left to AppKit")
+    func url(_ name: String) -> URL { URL(fileURLWithPath: "/tmp/" + name) }
+    expect(NSDocument.savePanelName("id_ed25519.txt", sourceURL: url("id_ed25519")) == "id_ed25519",
+           "Save As of an extension-less file proposes no extension")
+    expect(NSDocument.savePanelName("id_ed25519 copy.txt", sourceURL: url("id_ed25519")) == "id_ed25519 copy",
+           "a duplicate of an extension-less file proposes no extension")
+    expect(NSDocument.savePanelName("id_ed25519 copy", sourceURL: url("id_ed25519")) == "id_ed25519 copy",
+           "a name without .txt is kept")
+    expect(NSDocument.savePanelName("id_ed25519.txt", sourceURL: url("id_ed25519.pub")) == "id_ed25519.pub",
+           "Save As keeps an unknown extension (.pub)")
+    expect(NSDocument.savePanelName("id_ed25519 copy.txt", sourceURL: url("id_ed25519.pub")) == "id_ed25519 copy.pub",
+           "a duplicate keeps an unknown extension (.pub)")
+    expect(NSDocument.savePanelName(".gitignore.txt", sourceURL: url(".gitignore")) == ".gitignore",
+           "a dotfile keeps its name")
+    expect(NSDocument.savePanelName("data copy.json", sourceURL: url("data.json")) == nil,
+           "a type the panel lists is left to AppKit (#50)")
+    expect(NSDocument.savePanelName("notes.txt", sourceURL: url("notes.txt")) == nil,
+           "a .txt file is left alone")
+    expect(NSDocument.savePanelName("README.md", sourceURL: url("README.md")) == nil,
+           "a Markdown file is left alone")
 }
 
 print("\n\(passed) passed, \(failed) failed")
