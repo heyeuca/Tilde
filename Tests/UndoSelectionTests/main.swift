@@ -89,7 +89,9 @@ do {
 do {
     let view = makeTextView("abc", selecting: NSRange(location: 0, length: 3))
     view.isEditable = false
-    expect(!edit(view, NSRange(location: 0, length: 3), "**abc**", NSRange(location: 2, length: 3)), "non-editable view refuses")
+    // Called outside an undo group: an empty group would still count as
+    // undoable, so check the manager directly.
+    expect(!view.replaceRestoringSelectionOnUndo(NSRange(location: 0, length: 3), with: "**abc**", selecting: NSRange(location: 2, length: 3)), "non-editable view refuses")
     expect(view.string == "abc", "refused edit leaves the text")
     expect(!host.undoManager.canUndo, "refused edit registers nothing")
 }
