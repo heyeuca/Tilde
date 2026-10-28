@@ -24,6 +24,11 @@ import UniformTypeIdentifiers
 /// - `duplicate()`: the duplicate is read back from a copy AppKit writes
 ///   without group and other access, so it is handed the source's
 ///   permissions instead.
+/// - `fileNameExtension(forType:saveOperation:)`: for a file whose type
+///   the panel can't list (no extension, like `id_ed25519`, or an unknown
+///   one, like `.pub`), the copy keeps the source's extension, or none,
+///   instead of Plain Text's `.txt`. Picking another format still applies
+///   that format's extension.
 extension NSDocument {
     static func keepFileTypeAndPermissionsOnCopies() {
         _ = exchangeImplementations
@@ -34,6 +39,8 @@ extension NSDocument {
         exchange(#selector(fileAttributesToWrite(to:ofType:for:originalContentsURL:)),
                  #selector(tilde_fileAttributesToWrite(to:ofType:for:originalContentsURL:)))
         exchange(NSSelectorFromString("duplicateAndReturnError:"), #selector(tilde_duplicate))
+        exchange(#selector(fileNameExtension(forType:saveOperation:)),
+                 #selector(tilde_fileNameExtension(forType:saveOperation:)))
     }()
 
     private static func exchange(_ original: Selector, _ replacement: Selector) {
@@ -73,6 +80,44 @@ extension NSDocument {
         Self.isReadingFileType = true
         defer { Self.isReadingFileType = false }
         return Self.writableTypes(types, listing: fileType)
+    }
+
+    /// The extension a copy is saved with. `writableTypes(_:listing:)`
+    /// can't offer the document's type when it has no extension or is
+    /// dynamic, so the panel falls back to the first listed type, Plain
+    /// Text. In that case only, the copy keeps `sourceURL`'s extension, or
+    /// gets none when the source had none; `nil` means no extension.
+    /// Every other case keeps AppKit's `proposed` extension.
+    static func filenameExtension(_ proposed: String?, forType typeName: String,
+                                  documentType: String?, sourceURL: URL?) -> String? {
+        let listed = TextDocument.writableContentTypes.map(\.identifier)
+        guard let documentType, let sourceURL,
+              typeName == listed.first,
+              !listed.contains(documentType),
+              writableTypes(listed, listing: documentType) == listed
+        else { return proposed }
+        let ext = sourceURL.pathExtension
+        return ext.isEmpty ? nil : ext
+    }
+
+    private static var sourceURLKey = 0
+
+    /// A duplicate's source file, until its first save.
+    var sourceURL: URL? {
+        get { objc_getAssociatedObject(self, &Self.sourceURLKey) as? URL }
+        set { objc_setAssociatedObject(self, &Self.sourceURLKey, newValue, .OBJC_ASSOCIATION_RETAIN_NONATOMIC) }
+    }
+
+    @objc private dynamic func tilde_fileNameExtension(forType typeName: String,
+                                                       saveOperation: SaveOperationType) -> String? {
+        let proposed = tilde_fileNameExtension(forType: typeName, saveOperation: saveOperation)
+        let source: URL?
+        switch saveOperation {
+        case .saveAsOperation: source = fileURL ?? sourceURL
+        case .saveOperation where fileURL == nil: source = sourceURL
+        default: return proposed
+        }
+        return Self.filenameExtension(proposed, forType: typeName, documentType: fileType, sourceURL: source)
     }
 
     // MARK: - Permissions
@@ -128,6 +173,7 @@ extension NSDocument {
     @objc private dynamic func tilde_duplicate() throws -> NSDocument {
         let duplicate = try tilde_duplicate()
         duplicate.sourcePermissions = Self.posixPermissions(at: fileURL) ?? sourcePermissions
+        duplicate.sourceURL = fileURL ?? sourceURL
         return duplicate
     }
 }
