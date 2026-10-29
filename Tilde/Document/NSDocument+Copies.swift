@@ -115,9 +115,10 @@ extension NSDocument {
     /// allowed types) and before it is shown. For Save As, and for a
     /// duplicate's first save (`fileURL` is still `nil` then), it proposes
     /// `savePanelName(_:sourceURL:)`, and stops the panel from putting
-    /// `.txt` back: with no extension, no allowed types (the panel appends
-    /// the first allowed type's extension to a bare name); with an unknown
-    /// one, its type is allowed alongside the others. Choosing a format in
+    /// `.txt` back: with no extension or one only a dynamic type knows
+    /// (`.pub`), no allowed types (the panel appends the first allowed
+    /// type's extension to a bare name); with another unknown one, its type
+    /// is allowed alongside the others. Choosing a format in
     /// the menu resets the allowed types to that format's, as before.
     @objc private dynamic func tilde_prepareSavePanel(_ savePanel: NSSavePanel) -> Bool {
         guard tilde_prepareSavePanel(savePanel) else { return false }
@@ -126,11 +127,16 @@ extension NSDocument {
         else { return true }
         savePanel.allowsOtherFileTypes = true
         savePanel.isExtensionHidden = false
-        let ext = source.pathExtension
-        if ext.isEmpty {
+        // A dynamic type (`dyn.*`) is never allowed: the panel drops it and
+        // then asserts when asked to select it. Such an extension is handled
+        // like no extension.
+        if let type = UTType(filenameExtension: source.pathExtension), !type.isDynamic,
+           !source.pathExtension.isEmpty {
+            if !savePanel.allowedContentTypes.contains(type) {
+                savePanel.allowedContentTypes.append(type)
+            }
+        } else {
             savePanel.allowedContentTypes = []
-        } else if let type = UTType(filenameExtension: ext), !savePanel.allowedContentTypes.contains(type) {
-            savePanel.allowedContentTypes.append(type)
         }
         savePanel.nameFieldStringValue = name
         return true
