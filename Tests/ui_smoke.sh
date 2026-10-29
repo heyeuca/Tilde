@@ -9,6 +9,7 @@
 #   3. Lossy-encoding file       → read-only, bytes never change
 #   4. CRLF paste                → normalized to LF; saved bytes stay clean
 #   5. Mixed line endings        → an edit keeps untouched lines' endings
+#   6. ⌘Q with untitled text     → no alert; relaunch brings the text back
 #
 # Scenario 4 uses the clipboard: the current TEXT clipboard is saved and
 # restored, but non-text clipboard content is lost.
@@ -43,8 +44,8 @@ tell_app() { # $1 = System Events statement operating on the process
     osascript -e "tell application \"System Events\" to tell (first process whose unix id is $APP_PID) to $1" 2>/dev/null
 }
 
-launch() { # $@ = extra `open` arguments (a file to open)
-    open -n -a "$APP" "$@" --args -ApplePersistenceIgnoreState YES
+launch() { # $@ = extra `open` arguments (a file to open); IGNORE_STATE=NO restores windows
+    open -n -a "$APP" "$@" --args -ApplePersistenceIgnoreState "${IGNORE_STATE:-YES}"
     for _ in $(seq 1 40); do
         APP_PID="$(pgrep -nf "$BIN")" && [[ -n "$APP_PID" ]] &&
             [[ "$(tell_app 'exists front window')" == "true" ]] && { sleep 0.7; return 0; }
@@ -146,6 +147,56 @@ if launch "$WORK/mixed.txt"; then
     result $? "mixed-ending file keeps untouched lines' endings on ⌘S"
 else
     result 1 "mixed line ending checks (no window)"
+fi
+kill_app
+
+# ── 6. Quit keeps untitled text (#44) ──────────────────────────────────────
+# One untitled window with text and one left blank: ⌘Q quits without the
+# "review before quitting" alert, and the relaunch brings back only the
+# text, still untitled and still edited. Both launches keep saved state (a
+# launch that ignores it doesn't save it at quit either), so whatever an
+# earlier, interrupted run left is discarded first.
+discard_windows() { # closes every window, deleting untitled ones
+    for _ in $(seq 1 10); do
+        [[ "$(tell_app 'count windows')" == "0" ]] && break
+        tell_app 'keystroke "w" using command down'
+        sleep 0.7
+        tell_app 'click button "Delete" of splitter group 1 of sheet 1 of front window' >/dev/null
+        sleep 0.5
+    done
+}
+quit_app() { # ⌘Q; returns 0 when the process is gone without an alert
+    tell_app 'keystroke "q" using command down'
+    for _ in $(seq 1 20); do kill -0 "$APP_PID" 2>/dev/null || break; sleep 0.25; done
+    ! kill -0 "$APP_PID" 2>/dev/null
+}
+IGNORE_STATE=NO launch && { discard_windows; quit_app; }
+kill_app
+if IGNORE_STATE=NO launch; then
+    type_text "hot exit"
+    sleep 0.5
+    tell_app 'keystroke "n" using command down'
+    sleep 1
+    quit_app; result $? "⌘Q with untitled text quits without an alert"
+    kill_app
+    if IGNORE_STATE=NO launch; then
+        [[ "$(tell_app 'count windows')" == "1" ]]
+        result $? "relaunch brings back one window, not the blank one"
+        [[ "$(editor_text)" == "hot exit" ]]; result $? "relaunch brings back the untitled text"
+        [[ "$(tell_app 'get name of front window')" == Untitled* ]]
+        result $? "restored window is still untitled"
+        tell_app 'keystroke "w" using command down'
+        sleep 0.7
+        [[ "$(tell_app 'count sheets of front window')" == "1" ]]
+        result $? "restored window is still edited (⌘W asks to save)"
+        tell_app 'click button "Delete" of splitter group 1 of sheet 1 of front window' >/dev/null
+        sleep 0.5
+        discard_windows   # so the next run starts clean
+    else
+        result 1 "relaunch brings back the untitled text (no window)"
+    fi
+else
+    result 1 "quit keeps untitled text (no window)"
 fi
 kill_app
 

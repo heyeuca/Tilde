@@ -1,6 +1,6 @@
 # Tilde Privacy Policy
 
-_Last updated: October 2, 2026_
+_Last updated: October 26, 2026_
 
 Tilde is a text editor for macOS. Every document you open is processed entirely on your Mac.
 
@@ -14,7 +14,9 @@ Nothing. Tilde does not collect, store, or transmit any personal data or usage d
 
 ## Your documents
 
-Tilde runs inside the macOS App Sandbox and reads and writes only the files you explicitly open or save. Documents never leave your Mac through Tilde. Standard macOS features such as Autosave, Versions, and Recent Documents are handled by the operating system according to your own system settings.
+Tilde runs inside the macOS App Sandbox and reads and writes only the files you explicitly open or save, plus its own sandbox container. Documents never leave your Mac through Tilde. Standard macOS features such as Autosave, Versions, and Recent Documents are handled by the operating system according to your own system settings, with one exception: Tilde keeps its windows when you quit, unless you've chosen in System Settings → Desktop & Dock to close windows when quitting.
+
+So that untitled documents come back after you quit, macOS keeps their text in Tilde's sandbox container on your Mac until you save the document or close its window. Closing the window without saving discards that copy.
 
 ## Checking for updates
 
