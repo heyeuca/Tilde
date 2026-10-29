@@ -123,7 +123,12 @@ extension EditorTextView {
         for _ in 0..<3 {
             layoutManager.ensureLayout(for: NSTextRange(location: location))
             guard let fragment = layoutManager.textLayoutFragment(for: location) else { return }
-            let y = fragment.layoutFragmentFrame.minY
+            // A soft-wrapped paragraph is one layout fragment; aim at the
+            // line inside it that holds `index`, not the paragraph's start.
+            let offset = contentManager.offset(from: fragment.rangeInElement.location, to: location)
+            let line = fragment.textLineFragments.first { $0.characterRange.contains(offset) }
+                ?? fragment.textLineFragments.last
+            let y = fragment.layoutFragmentFrame.minY + (line?.typographicBounds.minY ?? 0)
             if y == lastY { return }
             lastY = y
             scroll(NSPoint(x: 0, y: y - titleBarInset))
