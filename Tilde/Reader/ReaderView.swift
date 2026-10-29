@@ -23,6 +23,12 @@ struct ReaderView: NSViewRepresentable {
     /// the top. Read at makeNSView time — the editor is still mounted
     /// underneath — so ANY entry path gets position restore for free.
     var entryFraction: () -> CGFloat = { 0 }
+    /// Receives Reader's reading position (fraction of the source above
+    /// its top line) when Reader closes, by any path, so the editor can
+    /// scroll there. Not called when Reader wasn't scrolled after entry:
+    /// the mapping is approximate, and entering and leaving without
+    /// scrolling must leave the editor where it was.
+    var exitFraction: (CGFloat) -> Void = { _ in }
     /// Called when the user presses Esc to leave Reader.
     var onExit: () -> Void
 
@@ -80,6 +86,7 @@ struct ReaderView: NSViewRepresentable {
         scrollView.documentView = textView
 
         context.coordinator.textView = textView
+        context.coordinator.exitFraction = exitFraction
         // Render exactly once: relative paths resolve against the passed-in
         // fileURL, so nothing needs to wait for the window (a second render
         // here used to double the entry cost on large documents). The entry
@@ -120,12 +127,22 @@ struct ReaderView: NSViewRepresentable {
 
     static func dismantleNSView(_ scrollView: NSScrollView, coordinator: Coordinator) {
         NotificationCenter.default.removeObserver(coordinator)
+        if let fraction = coordinator.exitSourceFraction() { coordinator.exitFraction(fraction) }
     }
 
     func makeCoordinator() -> Coordinator { Coordinator() }
 
     final class Coordinator: NSObject, NSTextViewDelegate {
         weak var textView: NSTextView?
+        var exitFraction: (CGFloat) -> Void = { _ in }
+        /// The clip view's origin right after the entry scroll; `nil` until
+        /// the entry render is in place. Leaving Reader restores the editor
+        /// only when the origin has moved since.
+        private var entryOrigin: CGFloat?
+        /// What `sourceFraction(forRenderedFraction:…)` needs from the
+        /// installed rendering.
+        private var installedRendering: MarkdownRenderer.Rendering?
+        private var installedSourceLength = 0
         private var renderedText: String?
         private var renderedSize: CGFloat?
         private var renderedBaseURL: URL?
@@ -173,6 +190,7 @@ struct ReaderView: NSViewRepresentable {
                     // place, so the deferred scroll doesn't flash.
                     DispatchQueue.main.async { [weak self] in
                         self?.scroll(toCharacterFraction: restoringFraction)
+                        self?.recordEntryOrigin()
                     }
                 }
                 return
@@ -196,7 +214,10 @@ struct ReaderView: NSViewRepresentable {
                         || renderer.wholeMetadataValues != self.wholeMetadataValues {
                         self.rebuildInstalledHeader()
                     }
-                    if let restoringFraction { self.scroll(toCharacterFraction: restoringFraction) }
+                    if let restoringFraction {
+                        self.scroll(toCharacterFraction: restoringFraction)
+                        self.recordEntryOrigin()
+                    }
                 }
             }
         }
@@ -243,7 +264,35 @@ struct ReaderView: NSViewRepresentable {
             return MarkdownLink.open(url) { scroll(toAnchor: $0) }
         }
 
+        private func recordEntryOrigin() {
+            entryOrigin = textView?.enclosingScrollView?.contentView.bounds.origin.y
+        }
+
+        /// Reader's top line as a fraction of the source, or `nil` when the
+        /// entry render isn't in place yet or Reader hasn't scrolled since.
+        func exitSourceFraction() -> CGFloat? {
+            guard let entryOrigin, let rendering = installedRendering,
+                  let textView, let layoutManager = textView.layoutManager,
+                  let container = textView.textContainer,
+                  let origin = textView.enclosingScrollView?.contentView.bounds.origin.y,
+                  abs(origin - entryOrigin) > 1
+            else { return nil }
+            let length = (textView.string as NSString).length
+            guard length > 0 else { return nil }
+            let point = NSPoint(x: 0, y: max(0, textView.visibleRect.minY - textView.textContainerInset.height))
+            let glyph = layoutManager.glyphIndex(for: point, in: container)
+            let index = layoutManager.characterIndexForGlyph(at: glyph)
+            return rendering.sourceFraction(
+                forRenderedFraction: CGFloat(index) / CGFloat(length),
+                sourceLength: installedSourceLength,
+                renderedLength: length,
+                prefixLength: installedHeader?.length
+            )
+        }
+
         private func install(_ rendering: MarkdownRenderer.Rendering, generation: Int) {
+            installedRendering = rendering
+            installedSourceLength = (renderedText.map { $0 as NSString })?.length ?? 0
             installedHeader = (rendering.metadata, rendering.bodyFollows, rendering.prefixLength)
             installedGeneration = generation
         }
