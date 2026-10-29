@@ -661,5 +661,29 @@ do {
            "a new document gets the default permissions")
 }
 
+// MARK: - Copies of files the save panel can't list keep their extension (#39)
+
+do {
+    func url(_ name: String) -> URL { URL(fileURLWithPath: "/tmp/" + name) }
+    expect(NSDocument.savePanelName("id_ed25519.txt", sourceURL: url("id_ed25519")) == "id_ed25519",
+           "Save As of an extension-less file proposes no extension")
+    expect(NSDocument.savePanelName("id_ed25519 copy.txt", sourceURL: url("id_ed25519")) == "id_ed25519 copy",
+           "a duplicate of an extension-less file proposes no extension")
+    expect(NSDocument.savePanelName("id_ed25519 copy", sourceURL: url("id_ed25519")) == "id_ed25519 copy",
+           "a name without .txt is kept")
+    expect(NSDocument.savePanelName("id_ed25519.txt", sourceURL: url("id_ed25519.pub")) == "id_ed25519.pub",
+           "Save As keeps an unknown extension (.pub)")
+    expect(NSDocument.savePanelName("id_ed25519 copy.txt", sourceURL: url("id_ed25519.pub")) == "id_ed25519 copy.pub",
+           "a duplicate keeps an unknown extension (.pub)")
+    expect(NSDocument.savePanelName(".gitignore.txt", sourceURL: url(".gitignore")) == ".gitignore",
+           "a dotfile keeps its name")
+    expect(NSDocument.savePanelName("data copy.json", sourceURL: url("data.json")) == nil,
+           "a type the panel lists is left to AppKit (#50)")
+    expect(NSDocument.savePanelName("notes.txt", sourceURL: url("notes.txt")) == nil,
+           "a .txt file is left alone")
+    expect(NSDocument.savePanelName("README.md", sourceURL: url("README.md")) == nil,
+           "a Markdown file is left alone")
+}
+
 print("\n\(passed) passed, \(failed) failed")
 exit(failed == 0 ? 0 : 1)
