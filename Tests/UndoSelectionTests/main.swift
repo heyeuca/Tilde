@@ -1,5 +1,5 @@
 // Tests for NSTextView.replaceRestoringSelectionOnUndo, the edit path behind
-// ⌘B / ⌘I / ⌘K: undo must bring back the selection that went with the text,
+// ⌘B / ⌘I / ⌘K and Tab / ⇧Tab: undo must bring back the selection that went with the text,
 // and redo the selection after the edit (#42). Uses a real NSTextView and
 // UndoManager, so it runs on macOS only.
 
@@ -82,6 +82,37 @@ do {
     host.undoManager.undo()
     expect(view.string == "ab", "undo removes the inserted pair")
     expect(view.selectedRange() == NSRange(location: 1, length: 0), "undo puts the caret back")
+}
+
+// MARK: - Tab / ⇧Tab on selected lines, then undo / redo
+
+do {
+    let text = "one\ntwo\nthree"
+    let selection = NSRange(location: 0, length: 7)
+    let view = makeTextView(text, selecting: selection)
+    let indent = IndentStyle.spaces(2).indent(in: text as NSString, selection: selection)
+    _ = edit(view, indent.range, indent.replacement, indent.selection)
+    expect(view.string == "  one\n  two\nthree", "indent text")
+    expect(view.selectedRange() == indent.selection, "indent keeps the lines selected")
+    host.undoManager.undo()
+    expect(view.string == text, "undo of indent restores the text")
+    expect(view.selectedRange() == selection, "undo of indent restores the selected lines")
+    host.undoManager.redo()
+    expect(view.selectedRange() == indent.selection, "redo of indent restores the selection after it")
+}
+
+do {
+    let text = "  one\n  two\nthree"
+    let selection = NSRange(location: 2, length: 9)
+    let view = makeTextView(text, selecting: selection)
+    guard let outdent = IndentStyle.spaces(2).outdent(in: text as NSString, selection: selection) else {
+        fatalError("outdent returned nil")
+    }
+    _ = edit(view, outdent.range, outdent.replacement, outdent.selection)
+    expect(view.string == "one\ntwo\nthree", "outdent text")
+    host.undoManager.undo()
+    expect(view.string == text, "undo of outdent restores the text")
+    expect(view.selectedRange() == selection, "undo of outdent restores the selected lines")
 }
 
 // MARK: - Refused edit
