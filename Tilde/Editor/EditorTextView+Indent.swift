@@ -8,7 +8,8 @@ import AppKit
 /// Tab and ⇧Tab follow the document's indentation (#18). The text itself
 /// is computed by `IndentStyle`; this applies it as one ordinary edit, so
 /// undo, the dirty state, the stylers' incremental restyle, and the
-/// line-number gutter all see it like typing.
+/// line-number gutter all see it like typing. Undo and redo also restore
+/// the selected lines, not just a caret.
 extension EditorTextView {
     override func insertTab(_ sender: Any?) {
         // While an input method is composing, Tab belongs to it (the
@@ -32,11 +33,8 @@ extension EditorTextView {
     private func apply(_ edit: IndentStyle.Edit) {
         // Each Tab or ⇧Tab is its own undo step, not merged into typing.
         breakUndoCoalescing()
-        guard shouldChangeText(in: edit.range, replacementString: edit.replacement) else { return }
-        replaceCharacters(in: edit.range, with: edit.replacement)
-        didChangeText()
+        guard replaceRestoringSelectionOnUndo(edit.range, with: edit.replacement, selecting: edit.selection) else { return }
         breakUndoCoalescing()
-        setSelectedRange(edit.selection)
         scrollRangeToVisible(edit.selection)
     }
 }
