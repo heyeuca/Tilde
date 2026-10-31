@@ -677,6 +677,10 @@ do {
            "a duplicate keeps an unknown extension (.pub)")
     expect(NSDocument.savePanelName("id_ed25519.pub", sourceURL: url("id_ed25519.pub")) == "id_ed25519.pub",
            "a name that already has the source's extension isn't given it twice")
+    expect(NSDocument.savePanelName("id_ed25519 copy.pub", sourceURL: url("id_ed25519.pub")) == "id_ed25519 copy.pub",
+           "a duplicate name that already has .pub isn't given it twice")
+    expect(NSDocument.savePanelName("id_ed25519 copy.TXT", sourceURL: url("id_ed25519")) == "id_ed25519 copy",
+           ".txt is stripped regardless of case")
     expect(NSDocument.savePanelName(".gitignore.txt", sourceURL: url(".gitignore")) == ".gitignore",
            "a dotfile keeps its name")
     expect(NSDocument.savePanelName("data copy.json", sourceURL: url("data.json")) == nil,
