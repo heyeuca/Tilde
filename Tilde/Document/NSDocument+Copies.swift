@@ -97,6 +97,9 @@ extension NSDocument {
         }
         var name = current
         let currentExt = (current as NSString).pathExtension.lowercased()
+        if !ext.isEmpty && currentExt == ext.lowercased() {
+            return name
+        }
         if listed.contains(where: { $0.tags[.filenameExtension]?.contains(currentExt) == true }) {
             name = (current as NSString).deletingPathExtension
         }
