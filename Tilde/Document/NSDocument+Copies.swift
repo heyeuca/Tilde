@@ -24,6 +24,11 @@ import UniformTypeIdentifiers
 /// - `duplicate()`: the duplicate is read back from a copy AppKit writes
 ///   without group and other access, so it is handed the source's
 ///   permissions instead.
+/// - `prepareSavePanel(_:)`: for a file whose type the panel can't list
+///   (no extension, like `id_ed25519`, or an unknown one, like `.pub`),
+///   the proposed name keeps the source's extension, or none, instead of
+///   Plain Text's `.txt`. Picking another format still applies that
+///   format's extension.
 extension NSDocument {
     static func keepFileTypeAndPermissionsOnCopies() {
         _ = exchangeImplementations
@@ -34,6 +39,7 @@ extension NSDocument {
         exchange(#selector(fileAttributesToWrite(to:ofType:for:originalContentsURL:)),
                  #selector(tilde_fileAttributesToWrite(to:ofType:for:originalContentsURL:)))
         exchange(NSSelectorFromString("duplicateAndReturnError:"), #selector(tilde_duplicate))
+        exchange(#selector(prepareSavePanel(_:)), #selector(tilde_prepareSavePanel(_:)))
     }()
 
     private static func exchange(_ original: Selector, _ replacement: Selector) {
@@ -73,6 +79,77 @@ extension NSDocument {
         Self.isReadingFileType = true
         defer { Self.isReadingFileType = false }
         return Self.writableTypes(types, listing: fileType)
+    }
+
+    /// The name the save panel should propose for a copy of `sourceURL`,
+    /// or `nil` to leave the panel alone. Only for a source the panel can't
+    /// list (`writableTypes(_:listing:)` leaves its type out): no extension
+    /// (`id_ed25519`, `.gitignore`) or an unknown one (`.pub`). The panel
+    /// then falls back to Plain Text and proposes `current` with `.txt`;
+    /// that extension is swapped for the source's, or dropped.
+    static func savePanelName(_ current: String, sourceURL: URL) -> String? {
+        let listed = TextDocument.writableContentTypes
+        let ext = sourceURL.pathExtension
+        if !ext.isEmpty {
+            guard let type = UTType(filenameExtension: ext), !listed.contains(type),
+                  writableTypes(listed.map(\.identifier), listing: type.identifier) == listed.map(\.identifier)
+            else { return nil }
+        }
+        var name = current
+        let currentExt = (current as NSString).pathExtension.lowercased()
+        if !ext.isEmpty && currentExt == ext.lowercased() {
+            return name
+        }
+        if listed.contains(where: { $0.tags[.filenameExtension]?.contains(currentExt) == true }) {
+            name = (current as NSString).deletingPathExtension
+        }
+        return ext.isEmpty ? name : name + "." + ext
+    }
+
+    /// `proposed`, when the save panel's name field shows it with only
+    /// `.txt` appended; otherwise `nil`. AppKit appends the selected
+    /// format's extension (Plain Text) after `prepareSavePanel(_:)` sets
+    /// the name, so the name is set again once the panel is up. Any other
+    /// value (the user typed, or picked another format) is left alone.
+    static func savePanelNameToRestore(_ field: String, proposed: String) -> String? {
+        let ext = (field as NSString).pathExtension
+        guard ext.lowercased() == "txt",
+              (field as NSString).deletingPathExtension == proposed
+        else { return nil }
+        return proposed
+    }
+
+    private static var sourceURLKey = 0
+
+    /// A duplicate's source file, until its first save.
+    var sourceURL: URL? {
+        get { objc_getAssociatedObject(self, &Self.sourceURLKey) as? URL }
+        set { objc_setAssociatedObject(self, &Self.sourceURLKey, newValue, .OBJC_ASSOCIATION_RETAIN_NONATOMIC) }
+    }
+
+    /// Runs after AppKit has set up the panel (name, File Format menu,
+    /// allowed types) and before it is shown. For Save As, and for a
+    /// duplicate's first save (`fileURL` is still `nil` then), it proposes
+    /// `savePanelName(_:sourceURL:)` (again on the next run loop turn, see
+    /// `savePanelNameToRestore(_:proposed:)`) and lets the panel accept that name's
+    /// extension, or none. The allowed types are left as AppKit set them,
+    /// so the File Format menu stays and choosing a format still applies
+    /// that format's extension.
+    @objc private dynamic func tilde_prepareSavePanel(_ savePanel: NSSavePanel) -> Bool {
+        guard tilde_prepareSavePanel(savePanel) else { return false }
+        guard let source = fileURL ?? sourceURL,
+              let name = Self.savePanelName(savePanel.nameFieldStringValue, sourceURL: source)
+        else { return true }
+        savePanel.allowsOtherFileTypes = true
+        savePanel.isExtensionHidden = false
+        savePanel.nameFieldStringValue = name
+        DispatchQueue.main.async { [weak savePanel] in
+            guard let savePanel,
+                  let restored = Self.savePanelNameToRestore(savePanel.nameFieldStringValue, proposed: name)
+            else { return }
+            savePanel.nameFieldStringValue = restored
+        }
+        return true
     }
 
     // MARK: - Permissions
@@ -128,6 +205,7 @@ extension NSDocument {
     @objc private dynamic func tilde_duplicate() throws -> NSDocument {
         let duplicate = try tilde_duplicate()
         duplicate.sourcePermissions = Self.posixPermissions(at: fileURL) ?? sourcePermissions
+        duplicate.sourceURL = fileURL ?? sourceURL
         return duplicate
     }
 }

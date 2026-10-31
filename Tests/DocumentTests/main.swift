@@ -661,5 +661,47 @@ do {
            "a new document gets the default permissions")
 }
 
+// MARK: - Copies of files the save panel can't list keep their extension (#39)
+
+do {
+    func url(_ name: String) -> URL { URL(fileURLWithPath: "/tmp/" + name) }
+    expect(NSDocument.savePanelName("id_ed25519.txt", sourceURL: url("id_ed25519")) == "id_ed25519",
+           "Save As of an extension-less file proposes no extension")
+    expect(NSDocument.savePanelName("id_ed25519 copy.txt", sourceURL: url("id_ed25519")) == "id_ed25519 copy",
+           "a duplicate of an extension-less file proposes no extension")
+    expect(NSDocument.savePanelName("id_ed25519 copy", sourceURL: url("id_ed25519")) == "id_ed25519 copy",
+           "a name without .txt is kept")
+    expect(NSDocument.savePanelName("id_ed25519.txt", sourceURL: url("id_ed25519.pub")) == "id_ed25519.pub",
+           "Save As keeps an unknown extension (.pub)")
+    expect(NSDocument.savePanelName("id_ed25519 copy.txt", sourceURL: url("id_ed25519.pub")) == "id_ed25519 copy.pub",
+           "a duplicate keeps an unknown extension (.pub)")
+    expect(NSDocument.savePanelName("id_ed25519.pub", sourceURL: url("id_ed25519.pub")) == "id_ed25519.pub",
+           "a name that already has the source's extension isn't given it twice")
+    expect(NSDocument.savePanelName("id_ed25519 copy.pub", sourceURL: url("id_ed25519.pub")) == "id_ed25519 copy.pub",
+           "a duplicate name that already has .pub isn't given it twice")
+    expect(NSDocument.savePanelName("id_ed25519 copy.TXT", sourceURL: url("id_ed25519")) == "id_ed25519 copy",
+           ".txt is stripped regardless of case")
+    expect(NSDocument.savePanelName(".gitignore.txt", sourceURL: url(".gitignore")) == ".gitignore",
+           "a dotfile keeps its name")
+    expect(NSDocument.savePanelName("data copy.json", sourceURL: url("data.json")) == nil,
+           "a type the panel lists is left to AppKit (#50)")
+    expect(NSDocument.savePanelName("notes.txt", sourceURL: url("notes.txt")) == nil,
+           "a .txt file is left alone")
+    expect(NSDocument.savePanelName("README.md", sourceURL: url("README.md")) == nil,
+           "a Markdown file is left alone")
+    expect(NSDocument.savePanelNameToRestore("id_ed25519.txt", proposed: "id_ed25519") == "id_ed25519",
+           "AppKit's appended .txt on a bare name is undone")
+    expect(NSDocument.savePanelNameToRestore("id_ed25519 copy.pub.txt", proposed: "id_ed25519 copy.pub") == "id_ed25519 copy.pub",
+           "AppKit's appended .txt after .pub is undone")
+    expect(NSDocument.savePanelNameToRestore("id_ed25519.TXT", proposed: "id_ed25519") == "id_ed25519",
+           ".txt is matched regardless of case")
+    expect(NSDocument.savePanelNameToRestore("id_ed25519", proposed: "id_ed25519") == nil,
+           "a field already showing the name is left alone")
+    expect(NSDocument.savePanelNameToRestore("id_ed25519.md", proposed: "id_ed25519") == nil,
+           "a format picked in the menu is left alone")
+    expect(NSDocument.savePanelNameToRestore("other.txt", proposed: "id_ed25519") == nil,
+           "a name the user typed is left alone")
+}
+
 print("\n\(passed) passed, \(failed) failed")
 exit(failed == 0 ? 0 : 1)
