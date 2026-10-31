@@ -19,20 +19,26 @@ extension NSTextView {
         // shouldChangeText (where the text's own undo is registered) makes it
         // run after the characters are back, overriding the caret AppKit
         // leaves there.
-        let before = selectedRanges
-        undoManager?.registerUndo(withTarget: self) { $0.setSelectedRangesRegisteringUndo(before) }
+        registerSelection(selectedRanges)
         guard shouldChangeText(in: range, replacementString: replacement) else { return false }
         replaceCharacters(in: range, with: replacement)
         didChangeText()
-        setSelectedRangesRegisteringUndo([NSValue(range: selection)])
+        let after = [NSValue(range: selection)]
+        selectedRanges = after
+        // Registered after the text's undo, so it runs before the characters
+        // change back: the selection that goes with the edited text, which
+        // redo restores even if the caret moved before ⌘Z.
+        registerSelection(after)
         return true
     }
 
-    /// Selects `ranges` and registers the current selection as its undo, so
-    /// undo and redo each land on the selection that went with their text.
-    private func setSelectedRangesRegisteringUndo(_ ranges: [NSValue]) {
-        let current = selectedRanges
-        undoManager?.registerUndo(withTarget: self) { $0.setSelectedRangesRegisteringUndo(current) }
-        selectedRanges = ranges
+    /// Registers selecting `ranges`, and when that runs, registers it again
+    /// for the opposite direction. Each selection stays fixed to its own
+    /// text state rather than to whatever was selected when undo ran.
+    private func registerSelection(_ ranges: [NSValue]) {
+        undoManager?.registerUndo(withTarget: self) { view in
+            view.registerSelection(ranges)
+            view.selectedRanges = ranges
+        }
     }
 }
