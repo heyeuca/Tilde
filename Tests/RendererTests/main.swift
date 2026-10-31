@@ -579,6 +579,23 @@ do {
     let plain = renderer.renderDocument("---\n---\n" + String(repeating: "b", count: 7) + "\n")
     expect(near(plain.renderedFraction(forSourceFraction: 0.75, sourceLength: 16), 0.5), "frontmatter: hidden block without a header shifts onto the body")
     expect(renderer.renderDocument("no frontmatter\n").renderedFraction(forSourceFraction: 0.3, sourceLength: 15) == 0.3, "frontmatter: fraction unchanged without a block")
+
+    // Leaving Reader maps back (#13).
+    for f in [0.6, 0.75, 0.9, 1.0] as [CGFloat] {
+        let there = rendering.renderedFraction(forSourceFraction: f, sourceLength: length)
+        let back = rendering.sourceFraction(forRenderedFraction: there, sourceLength: length)
+        expect(near(back, f), "exit: a body position round-trips (\(f) -> \(there) -> \(back))")
+    }
+    expect(near(rendering.sourceFraction(forRenderedFraction: 12.5 / 19, sourceLength: length), 0.75), "exit: a body position skips the header and lands past the frontmatter")
+    expect(rendering.sourceFraction(forRenderedFraction: 3.0 / 19, sourceLength: length) == 0, "exit: a position in the header maps to the top of the source")
+    expect(rendering.sourceFraction(forRenderedFraction: 0, sourceLength: length) == 0, "exit: the top stays the top")
+    expect(rendering.sourceFraction(forRenderedFraction: 1, sourceLength: length) == 1, "exit: the end stays the end")
+    expect(rendering.sourceFraction(forRenderedFraction: 1.5, sourceLength: length) == 1 && rendering.sourceFraction(forRenderedFraction: -1, sourceLength: length) == 0, "exit: out-of-range fractions are clamped")
+    expect(near(titled.sourceFraction(forRenderedFraction: 10.5 / 19, sourceLength: 34), 0.75), "exit: a raised title maps back like the header")
+    expect(near(plain.sourceFraction(forRenderedFraction: 0.5, sourceLength: 16), 0.75), "exit: a hidden block without a header shifts back")
+    // An unfolded header is longer than the rendering's: its installed length is used.
+    expect(near(rendering.sourceFraction(forRenderedFraction: 16.5 / 23, sourceLength: length, renderedLength: 23, prefixLength: 10), 0.75), "exit: an unfolded header's installed length is used")
+    expect(renderer.renderDocument("no frontmatter\n").sourceFraction(forRenderedFraction: 0.3, sourceLength: 15) == 0.3, "exit: fraction unchanged without a block")
 }
 
 // heyeuca/Tilde#10 review: rule-delimited prose must not vanish, and a

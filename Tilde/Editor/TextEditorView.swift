@@ -8,10 +8,11 @@ import AppKit
 
 /// Lets `EditorView` talk to the AppKit text view without holding a
 /// reference to it: ask for the current reading position (fraction of
-/// characters above the viewport top) and hand keyboard focus back after
-/// Reader mode exits.
+/// characters above the viewport top), scroll to the position Reader was
+/// left at, and hand keyboard focus back after Reader mode exits.
 final class EditorScrollBridge {
     var readFraction: () -> CGFloat = { 0 }
+    var scrollToFraction: (CGFloat) -> Void = { _ in }
     var focusEditor: () -> Void = {}
 }
 
@@ -198,6 +199,13 @@ struct TextEditorView: NSViewRepresentable {
             textView.isEditable = !document.isLossy
             parent.scrollBridge?.readFraction = { [weak self] in
                 self?.currentReadingFraction() ?? 0
+            }
+            parent.scrollBridge?.scrollToFraction = { [weak self] fraction in
+                guard let textView = self?.textView as? EditorTextView,
+                      let length = self?.attachedDocument?.textStorage.length, length > 0
+                else { return }
+                // Scroll only: the caret and selection stay as they were.
+                textView.scrollToTop(characterIndex: min(length - 1, Int(CGFloat(length) * fraction)))
             }
             parent.scrollBridge?.focusEditor = { [weak self] in
                 self?.claimKeyboardFocus()
