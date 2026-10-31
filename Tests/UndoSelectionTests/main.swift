@@ -115,6 +115,40 @@ do {
     expect(view.selectedRange() == selection, "undo of outdent restores the selected lines")
 }
 
+// MARK: - Caret moved after the edit, then undo / redo
+
+// Moving the caret isn't undoable, so redo must still land on the
+// selection right after the edit, not on wherever the caret was moved.
+do {
+    let text = "one\ntwo\nthree"
+    let selection = NSRange(location: 0, length: 7)
+    let view = makeTextView(text, selecting: selection)
+    let indent = IndentStyle.spaces(2).indent(in: text as NSString, selection: selection)
+    _ = edit(view, indent.range, indent.replacement, indent.selection)
+    view.setSelectedRange(NSRange(location: 3, length: 0))
+    host.undoManager.undo()
+    expect(view.selectedRange() == selection, "undo of indent after moving the caret restores the selected lines")
+    host.undoManager.redo()
+    expect(view.selectedRange() == indent.selection, "redo of indent after moving the caret restores the selection after it")
+    host.undoManager.undo()
+    expect(view.selectedRange() == selection, "second undo of indent restores the selected lines")
+}
+
+do {
+    let text = "  one\n  two\nthree"
+    let selection = NSRange(location: 2, length: 9)
+    let view = makeTextView(text, selecting: selection)
+    guard let outdent = IndentStyle.spaces(2).outdent(in: text as NSString, selection: selection) else {
+        fatalError("outdent returned nil")
+    }
+    _ = edit(view, outdent.range, outdent.replacement, outdent.selection)
+    view.setSelectedRange(NSRange(location: 1, length: 0))
+    host.undoManager.undo()
+    expect(view.selectedRange() == selection, "undo of outdent after moving the caret restores the selected lines")
+    host.undoManager.redo()
+    expect(view.selectedRange() == outdent.selection, "redo of outdent after moving the caret restores the selection after it")
+}
+
 // MARK: - Refused edit
 
 do {
