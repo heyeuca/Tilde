@@ -689,6 +689,18 @@ do {
            "a .txt file is left alone")
     expect(NSDocument.savePanelName("README.md", sourceURL: url("README.md")) == nil,
            "a Markdown file is left alone")
+    expect(NSDocument.savePanelNameToRestore("id_ed25519.txt", proposed: "id_ed25519") == "id_ed25519",
+           "AppKit's appended .txt on a bare name is undone")
+    expect(NSDocument.savePanelNameToRestore("id_ed25519 copy.pub.txt", proposed: "id_ed25519 copy.pub") == "id_ed25519 copy.pub",
+           "AppKit's appended .txt after .pub is undone")
+    expect(NSDocument.savePanelNameToRestore("id_ed25519.TXT", proposed: "id_ed25519") == "id_ed25519",
+           ".txt is matched regardless of case")
+    expect(NSDocument.savePanelNameToRestore("id_ed25519", proposed: "id_ed25519") == nil,
+           "a field already showing the name is left alone")
+    expect(NSDocument.savePanelNameToRestore("id_ed25519.md", proposed: "id_ed25519") == nil,
+           "a format picked in the menu is left alone")
+    expect(NSDocument.savePanelNameToRestore("other.txt", proposed: "id_ed25519") == nil,
+           "a name the user typed is left alone")
 }
 
 print("\n\(passed) passed, \(failed) failed")

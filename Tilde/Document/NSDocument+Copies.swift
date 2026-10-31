@@ -106,6 +106,19 @@ extension NSDocument {
         return ext.isEmpty ? name : name + "." + ext
     }
 
+    /// `proposed`, when the save panel's name field shows it with only
+    /// `.txt` appended; otherwise `nil`. AppKit appends the selected
+    /// format's extension (Plain Text) after `prepareSavePanel(_:)` sets
+    /// the name, so the name is set again once the panel is up. Any other
+    /// value (the user typed, or picked another format) is left alone.
+    static func savePanelNameToRestore(_ field: String, proposed: String) -> String? {
+        let ext = (field as NSString).pathExtension
+        guard ext.lowercased() == "txt",
+              (field as NSString).deletingPathExtension == proposed
+        else { return nil }
+        return proposed
+    }
+
     private static var sourceURLKey = 0
 
     /// A duplicate's source file, until its first save.
@@ -117,7 +130,8 @@ extension NSDocument {
     /// Runs after AppKit has set up the panel (name, File Format menu,
     /// allowed types) and before it is shown. For Save As, and for a
     /// duplicate's first save (`fileURL` is still `nil` then), it proposes
-    /// `savePanelName(_:sourceURL:)` and lets the panel accept that name's
+    /// `savePanelName(_:sourceURL:)` (again on the next run loop turn, see
+    /// `savePanelNameToRestore(_:proposed:)`) and lets the panel accept that name's
     /// extension, or none. The allowed types are left as AppKit set them,
     /// so the File Format menu stays and choosing a format still applies
     /// that format's extension.
@@ -129,6 +143,12 @@ extension NSDocument {
         savePanel.allowsOtherFileTypes = true
         savePanel.isExtensionHidden = false
         savePanel.nameFieldStringValue = name
+        DispatchQueue.main.async { [weak savePanel] in
+            guard let savePanel,
+                  let restored = Self.savePanelNameToRestore(savePanel.nameFieldStringValue, proposed: name)
+            else { return }
+            savePanel.nameFieldStringValue = restored
+        }
         return true
     }
 
