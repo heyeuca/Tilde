@@ -67,6 +67,10 @@ build_and_run LexerTests \
     Tilde/Reader/CodeHighlighter.swift \
     Tests/LexerTests/main.swift || status=1
 
+build_and_run UndoSelectionTests \
+    Tilde/Editor/NSTextView+UndoableEdit.swift \
+    Tests/UndoSelectionTests/main.swift || status=1
+
 build_and_run LocalizationTests \
     Tests/LocalizationTests/main.swift || status=1
 
