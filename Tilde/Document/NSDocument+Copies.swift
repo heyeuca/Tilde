@@ -5,6 +5,7 @@
 
 import AppKit
 import ObjectiveC
+import os
 import UniformTypeIdentifiers
 
 /// Save As and Duplicate keep the file's extension and permissions (#39).
@@ -29,6 +30,13 @@ import UniformTypeIdentifiers
 ///   the proposed name keeps the source's extension, or none, instead of
 ///   Plain Text's `.txt`. Picking another format still applies that
 ///   format's extension.
+/// - `save(to:ofType:for:completionHandler:)`: the panel puts `.txt` back
+///   on that name while Plain Text is selected, whatever the field is set
+///   to. When the name the user confirms is exactly the proposed name with
+///   `.txt` appended, the file is saved under the proposed name instead.
+///
+/// The `SavePanel` log category traces each step:
+/// `log stream --predicate 'subsystem == "co.euca.Tilde" AND category == "SavePanel"' --level debug`
 extension NSDocument {
     static func keepFileTypeAndPermissionsOnCopies() {
         _ = exchangeImplementations
@@ -40,7 +48,11 @@ extension NSDocument {
                  #selector(tilde_fileAttributesToWrite(to:ofType:for:originalContentsURL:)))
         exchange(NSSelectorFromString("duplicateAndReturnError:"), #selector(tilde_duplicate))
         exchange(#selector(prepareSavePanel(_:)), #selector(tilde_prepareSavePanel(_:)))
+        exchange(#selector(save(to:ofType:for:completionHandler:)),
+                 #selector(tilde_save(to:ofType:for:completionHandler:)))
     }()
+
+    static let savePanelLog = Logger(subsystem: "co.euca.Tilde", category: "SavePanel")
 
     private static func exchange(_ original: Selector, _ replacement: Selector) {
         guard let original = class_getInstanceMethod(NSDocument.self, original),
@@ -127,29 +139,76 @@ extension NSDocument {
         set { objc_setAssociatedObject(self, &Self.sourceURLKey, newValue, .OBJC_ASSOCIATION_RETAIN_NONATOMIC) }
     }
 
+    /// The file name to save under when the user confirmed `chosen` in
+    /// a save panel that proposed `proposed`: `proposed` when `chosen` is
+    /// only that name with the `.txt` AppKit appends for Plain Text;
+    /// otherwise `nil`, and `chosen` is kept (a typed name, or another
+    /// format picked in the menu).
+    static func savedName(_ chosen: String, proposed: String?) -> String? {
+        guard let proposed, chosen != proposed else { return nil }
+        return savePanelNameToRestore(chosen, proposed: proposed)
+    }
+
+    private static var proposedSaveNameKey = 0
+
+    /// The name `prepareSavePanel(_:)` proposed, until the save it was for.
+    var proposedSaveName: String? {
+        get { objc_getAssociatedObject(self, &Self.proposedSaveNameKey) as? String }
+        set { objc_setAssociatedObject(self, &Self.proposedSaveNameKey, newValue, .OBJC_ASSOCIATION_RETAIN_NONATOMIC) }
+    }
+
     /// Runs after AppKit has set up the panel (name, File Format menu,
     /// allowed types) and before it is shown. For Save As, and for a
     /// duplicate's first save (`fileURL` is still `nil` then), it proposes
-    /// `savePanelName(_:sourceURL:)` (again on the next run loop turn, see
-    /// `savePanelNameToRestore(_:proposed:)`) and lets the panel accept that name's
-    /// extension, or none. The allowed types are left as AppKit set them,
-    /// so the File Format menu stays and choosing a format still applies
-    /// that format's extension.
+    /// `savePanelName(_:sourceURL:)`, lets the panel accept that name's
+    /// extension, or none, and remembers the name for
+    /// `save(to:ofType:for:completionHandler:)`. The allowed types are left
+    /// as AppKit set them, so the File Format menu stays and choosing a
+    /// format still applies that format's extension.
     @objc private dynamic func tilde_prepareSavePanel(_ savePanel: NSSavePanel) -> Bool {
-        guard tilde_prepareSavePanel(savePanel) else { return false }
-        guard let source = fileURL ?? sourceURL,
-              let name = Self.savePanelName(savePanel.nameFieldStringValue, sourceURL: source)
-        else { return true }
+        let log = Self.savePanelLog
+        guard tilde_prepareSavePanel(savePanel) else {
+            log.info("prepare: AppKit declined, panel left alone")
+            return false
+        }
+        let field = savePanel.nameFieldStringValue
+        let source = fileURL ?? sourceURL
+        log.info("prepare: entered, class=\(String(describing: type(of: self)), privacy: .public) fileType=\(self.fileType ?? "nil", privacy: .public) source=\(source?.lastPathComponent ?? "nil", privacy: .public) field=\(field, privacy: .public)")
+        proposedSaveName = nil
+        guard let source, let name = Self.savePanelName(field, sourceURL: source) else {
+            log.info("prepare: source type is listed or no source, field left as is")
+            return true
+        }
         savePanel.allowsOtherFileTypes = true
         savePanel.isExtensionHidden = false
         savePanel.nameFieldStringValue = name
-        DispatchQueue.main.async { [weak savePanel] in
-            guard let savePanel,
-                  let restored = Self.savePanelNameToRestore(savePanel.nameFieldStringValue, proposed: name)
-            else { return }
-            savePanel.nameFieldStringValue = restored
+        proposedSaveName = name
+        log.info("prepare: proposed=\(name, privacy: .public) field after set=\(savePanel.nameFieldStringValue, privacy: .public)")
+        DispatchQueue.main.asyncAfter(deadline: .now() + 1) { [weak savePanel] in
+            guard let savePanel else { return }
+            log.debug("prepare+1s: field=\(savePanel.nameFieldStringValue, privacy: .public)")
         }
         return true
+    }
+
+    @objc private dynamic func tilde_save(
+        to url: URL, ofType typeName: String, for saveOperation: SaveOperationType,
+        completionHandler: @escaping (Error?) -> Void
+    ) {
+        var url = url
+        let isCopy = saveOperation == .saveAsOperation || (saveOperation == .saveOperation && fileURL == nil)
+        if isCopy {
+            let chosen = url.lastPathComponent
+            let proposed = proposedSaveName
+            proposedSaveName = nil
+            if let name = Self.savedName(chosen, proposed: proposed) {
+                url = url.deletingLastPathComponent().appendingPathComponent(name)
+                Self.savePanelLog.info("save: chosen=\(chosen, privacy: .public) type=\(typeName, privacy: .public) rewritten to \(name, privacy: .public)")
+            } else {
+                Self.savePanelLog.info("save: chosen=\(chosen, privacy: .public) type=\(typeName, privacy: .public) proposed=\(proposed ?? "nil", privacy: .public) kept")
+            }
+        }
+        tilde_save(to: url, ofType: typeName, for: saveOperation, completionHandler: completionHandler)
     }
 
     // MARK: - Permissions
