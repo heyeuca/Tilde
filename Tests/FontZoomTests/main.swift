@@ -50,5 +50,14 @@ do {
     expect(current == 12, "pinch reverses within one gesture")
 }
 
+do {
+    var zoom = FontZoom(base: 36, range: range)
+    expect(zoom.apply(0.3, current: 36) == nil, "pinch out at max writes nothing")
+    expect(zoom.apply(-0.2, current: 36) == 34, "reverse at max responds immediately")
+    var low = FontZoom(base: 9, range: range)
+    _ = low.apply(-0.5, current: 9)
+    expect(low.apply(0.1, current: 9) == 10, "reverse at min responds immediately")
+}
+
 print("\(passed) passed, \(failed) failed")
 exit(failed == 0 ? 0 : 1)

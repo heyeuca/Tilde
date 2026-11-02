@@ -42,7 +42,10 @@ struct FontZoom {
     /// only when it differs from `current`, so defaults aren't rewritten on
     /// every event.
     mutating func apply(_ magnification: Double, current: Double) -> Double? {
-        accumulated += magnification
+        // Clamp so overshooting a limit doesn't have to be unwound before
+        // a reverse pinch takes effect.
+        let k = Self.pointsPerMagnification
+        accumulated = min(max(accumulated + magnification, (range.lowerBound - base) / k), (range.upperBound - base) / k)
         let size = Self.fontSize(base: base, magnification: accumulated, range: range)
         return size == current ? nil : size
     }
