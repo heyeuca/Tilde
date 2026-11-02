@@ -336,6 +336,10 @@ struct ReaderView: NSViewRepresentable {
         var onExit: (() -> Void)?
         override func cancelOperation(_ sender: Any?) { onExit?() }
 
+        /// Trackpad pinch changes the shared font size (#4).
+        private let pinchFontSize = PinchFontSizeTracker()
+        override func magnify(with event: NSEvent) { pinchFontSize.handle(event) }
+
         /// NSTextView still asks for plain text by its legacy name.
         private static let plainTextTypes: Set<NSPasteboard.PasteboardType> = [
             .string, NSPasteboard.PasteboardType("NSStringPboardType"),
