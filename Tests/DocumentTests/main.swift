@@ -701,18 +701,24 @@ do {
            "a format picked in the menu is left alone")
     expect(NSDocument.savePanelNameToRestore("other.txt", proposed: "id_ed25519") == nil,
            "a name the user typed is left alone")
-    expect(NSDocument.savedName("id_ed25519.txt", proposed: "id_ed25519") == "id_ed25519",
+    expect(NSDocument.savedName("id_ed25519.txt", proposed: "id_ed25519", targetExists: false, isOwnFile: false) == "id_ed25519",
            "a confirmed name with AppKit's .txt is saved without it")
-    expect(NSDocument.savedName("id_ed25519 copy.pub.txt", proposed: "id_ed25519 copy.pub") == "id_ed25519 copy.pub",
+    expect(NSDocument.savedName("id_ed25519 copy.pub.txt", proposed: "id_ed25519 copy.pub", targetExists: false, isOwnFile: false) == "id_ed25519 copy.pub",
            "a confirmed duplicate name keeps .pub without .txt")
-    expect(NSDocument.savedName("id_ed25519", proposed: "id_ed25519") == nil,
+    expect(NSDocument.savedName("id_ed25519", proposed: "id_ed25519", targetExists: false, isOwnFile: false) == nil,
            "a confirmed name without .txt is kept")
-    expect(NSDocument.savedName("id_ed25519.md", proposed: "id_ed25519") == nil,
+    expect(NSDocument.savedName("id_ed25519.md", proposed: "id_ed25519", targetExists: false, isOwnFile: false) == nil,
            "Markdown picked in the menu is kept")
-    expect(NSDocument.savedName("key.txt", proposed: "id_ed25519") == nil,
+    expect(NSDocument.savedName("key.txt", proposed: "id_ed25519", targetExists: false, isOwnFile: false) == nil,
            "a typed name ending in .txt is kept")
-    expect(NSDocument.savedName("id_ed25519.txt", proposed: nil) == nil,
+    expect(NSDocument.savedName("id_ed25519.txt", proposed: nil, targetExists: false, isOwnFile: false) == nil,
            "nothing is rewritten when no name was proposed")
+    expect(NSDocument.savedName("id_ed25519.txt", proposed: "id_ed25519", targetExists: true, isOwnFile: false) == nil,
+           "another file at the stripped name is never overwritten: .txt is kept")
+    expect(NSDocument.savedName("id_ed25519.txt", proposed: "id_ed25519", targetExists: true, isOwnFile: true) == "id_ed25519",
+           "saving over the document's own file strips .txt")
+    expect(NSDocument.savedName("id_ed25519.txt", proposed: "id_ed25519", targetExists: false, isOwnFile: false) == "id_ed25519",
+           "nothing at the stripped name: .txt is stripped")
 }
 
 print("\n\(passed) passed, \(failed) failed")

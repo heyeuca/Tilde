@@ -35,7 +35,7 @@ import UniformTypeIdentifiers
 ///   to. When the name the user confirms is exactly the proposed name with
 ///   `.txt` appended, the file is saved under the proposed name instead.
 ///
-/// The `SavePanel` log category traces each step:
+/// The `SavePanel` log category (subsystem: the app's bundle id) traces each step:
 /// `log stream --predicate 'subsystem == "co.euca.Tilde" AND category == "SavePanel"' --level debug`
 extension NSDocument {
     static func keepFileTypeAndPermissionsOnCopies() {
@@ -52,7 +52,7 @@ extension NSDocument {
                  #selector(tilde_save(to:ofType:for:completionHandler:)))
     }()
 
-    static let savePanelLog = Logger(subsystem: "co.euca.Tilde", category: "SavePanel")
+    static let savePanelLog = Logger(subsystem: Bundle.main.bundleIdentifier ?? "co.euca.Tilde", category: "SavePanel")
 
     private static func exchange(_ original: Selector, _ replacement: Selector) {
         guard let original = class_getInstanceMethod(NSDocument.self, original),
@@ -143,9 +143,13 @@ extension NSDocument {
     /// a save panel that proposed `proposed`: `proposed` when `chosen` is
     /// only that name with the `.txt` AppKit appends for Plain Text;
     /// otherwise `nil`, and `chosen` is kept (a typed name, or another
-    /// format picked in the menu).
-    static func savedName(_ chosen: String, proposed: String?) -> String? {
-        guard let proposed, chosen != proposed else { return nil }
+    /// format picked in the menu). The panel only warned about replacing
+    /// `chosen`, so `proposed` is used only when no file is there
+    /// (`targetExists`) or that file is the document itself (`isOwnFile`);
+    /// otherwise another file would be overwritten without a warning.
+    static func savedName(_ chosen: String, proposed: String?,
+                          targetExists: Bool, isOwnFile: Bool) -> String? {
+        guard let proposed, chosen != proposed, !targetExists || isOwnFile else { return nil }
         return savePanelNameToRestore(chosen, proposed: proposed)
     }
 
@@ -201,11 +205,17 @@ extension NSDocument {
             let chosen = url.lastPathComponent
             let proposed = proposedSaveName
             proposedSaveName = nil
-            if let name = Self.savedName(chosen, proposed: proposed) {
+            let target = proposed.map { url.deletingLastPathComponent().appendingPathComponent($0) }
+            let targetExists = target.map { FileManager.default.fileExists(atPath: $0.path) } ?? false
+            let isOwnFile = target.map { target in
+                fileURL.map { $0.standardizedFileURL.resolvingSymlinksInPath()
+                    == target.standardizedFileURL.resolvingSymlinksInPath() } ?? false
+            } ?? false
+            if let name = Self.savedName(chosen, proposed: proposed, targetExists: targetExists, isOwnFile: isOwnFile) {
                 url = url.deletingLastPathComponent().appendingPathComponent(name)
-                Self.savePanelLog.info("save: chosen=\(chosen, privacy: .public) type=\(typeName, privacy: .public) rewritten to \(name, privacy: .public)")
+                Self.savePanelLog.info("save: chosen=\(chosen, privacy: .public) type=\(typeName, privacy: .public) targetExists=\(targetExists, privacy: .public) isOwnFile=\(isOwnFile, privacy: .public) rewritten to \(name, privacy: .public)")
             } else {
-                Self.savePanelLog.info("save: chosen=\(chosen, privacy: .public) type=\(typeName, privacy: .public) proposed=\(proposed ?? "nil", privacy: .public) kept")
+                Self.savePanelLog.info("save: chosen=\(chosen, privacy: .public) type=\(typeName, privacy: .public) proposed=\(proposed ?? "nil", privacy: .public) targetExists=\(targetExists, privacy: .public) isOwnFile=\(isOwnFile, privacy: .public) kept")
             }
         }
         tilde_save(to: url, ofType: typeName, for: saveOperation, completionHandler: completionHandler)
