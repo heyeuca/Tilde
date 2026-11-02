@@ -30,10 +30,11 @@ import UniformTypeIdentifiers
 ///   the proposed name keeps the source's extension, or none, instead of
 ///   Plain Text's `.txt`. Picking another format still applies that
 ///   format's extension.
-/// - `save(to:ofType:for:completionHandler:)`: the panel puts `.txt` back
-///   on that name while Plain Text is selected, whatever the field is set
-///   to. When the name the user confirms is exactly the proposed name with
-///   `.txt` appended, the file is saved under the proposed name instead.
+///   The panel still shows `.txt` while Plain Text is selected, so
+///   `SavePanelNameDelegate` drops it when the user confirms exactly the
+///   proposed name with `.txt` appended (inside the panel, so the sandbox
+///   grants the final file). `save(to:ofType:for:completionHandler:)` is
+///   exchanged only to log the final URL.
 ///
 /// The `SavePanel` log category (subsystem: the app's bundle id) traces each step:
 /// `log stream --predicate 'subsystem == "co.euca.Tilde" AND category == "SavePanel"' --level debug`
@@ -153,22 +154,16 @@ extension NSDocument {
         return savePanelNameToRestore(chosen, proposed: proposed)
     }
 
-    private static var proposedSaveNameKey = 0
-
-    /// The name `prepareSavePanel(_:)` proposed, until the save it was for.
-    var proposedSaveName: String? {
-        get { objc_getAssociatedObject(self, &Self.proposedSaveNameKey) as? String }
-        set { objc_setAssociatedObject(self, &Self.proposedSaveNameKey, newValue, .OBJC_ASSOCIATION_RETAIN_NONATOMIC) }
-    }
-
     /// Runs after AppKit has set up the panel (name, File Format menu,
     /// allowed types) and before it is shown. For Save As, and for a
     /// duplicate's first save (`fileURL` is still `nil` then), it proposes
     /// `savePanelName(_:sourceURL:)`, lets the panel accept that name's
-    /// extension, or none, and remembers the name for
-    /// `save(to:ofType:for:completionHandler:)`. The allowed types are left
-    /// as AppKit set them, so the File Format menu stays and choosing a
-    /// format still applies that format's extension.
+    /// extension, or none, and puts a `SavePanelNameDelegate` in front of
+    /// the panel's delegate. The panel shows that name with `.txt` again;
+    /// the delegate drops it when the user confirms, inside the panel, so
+    /// the sandbox grants access to the final file. The allowed types are
+    /// left as AppKit set them, so the File Format menu stays and choosing
+    /// a format still applies that format's extension.
     @objc private dynamic func tilde_prepareSavePanel(_ savePanel: NSSavePanel) -> Bool {
         let log = Self.savePanelLog
         guard tilde_prepareSavePanel(savePanel) else {
@@ -177,8 +172,7 @@ extension NSDocument {
         }
         let field = savePanel.nameFieldStringValue
         let source = fileURL ?? sourceURL
-        log.info("prepare: entered, class=\(String(describing: type(of: self)), privacy: .public) fileType=\(self.fileType ?? "nil", privacy: .public) source=\(source?.lastPathComponent ?? "nil", privacy: .public) field=\(field, privacy: .public)")
-        proposedSaveName = nil
+        log.info("prepare: entered, class=\(String(describing: type(of: self)), privacy: .public) fileType=\(self.fileType ?? "nil", privacy: .public) source=\(source?.lastPathComponent ?? "nil", privacy: .public) field=\(field, privacy: .public) delegate=\(String(describing: savePanel.delegate.map { type(of: $0) }), privacy: .public)")
         guard let source, let name = Self.savePanelName(field, sourceURL: source) else {
             log.info("prepare: source type is listed or no source, field left as is")
             return true
@@ -186,37 +180,18 @@ extension NSDocument {
         savePanel.allowsOtherFileTypes = true
         savePanel.isExtensionHidden = false
         savePanel.nameFieldStringValue = name
-        proposedSaveName = name
+        SavePanelNameDelegate.install(on: savePanel, proposed: name, ownFile: fileURL)
         log.info("prepare: proposed=\(name, privacy: .public) field after set=\(savePanel.nameFieldStringValue, privacy: .public)")
-        DispatchQueue.main.asyncAfter(deadline: .now() + 1) { [weak savePanel] in
-            guard let savePanel else { return }
-            log.debug("prepare+1s: field=\(savePanel.nameFieldStringValue, privacy: .public)")
-        }
         return true
     }
 
+    /// Log only: the URL the save actually goes to.
     @objc private dynamic func tilde_save(
         to url: URL, ofType typeName: String, for saveOperation: SaveOperationType,
         completionHandler: @escaping (Error?) -> Void
     ) {
-        var url = url
-        let isCopy = saveOperation == .saveAsOperation || (saveOperation == .saveOperation && fileURL == nil)
-        if isCopy {
-            let chosen = url.lastPathComponent
-            let proposed = proposedSaveName
-            proposedSaveName = nil
-            let target = proposed.map { url.deletingLastPathComponent().appendingPathComponent($0) }
-            let targetExists = target.map { FileManager.default.fileExists(atPath: $0.path) } ?? false
-            let isOwnFile = target.map { target in
-                fileURL.map { $0.standardizedFileURL.resolvingSymlinksInPath()
-                    == target.standardizedFileURL.resolvingSymlinksInPath() } ?? false
-            } ?? false
-            if let name = Self.savedName(chosen, proposed: proposed, targetExists: targetExists, isOwnFile: isOwnFile) {
-                url = url.deletingLastPathComponent().appendingPathComponent(name)
-                Self.savePanelLog.info("save: chosen=\(chosen, privacy: .public) type=\(typeName, privacy: .public) targetExists=\(targetExists, privacy: .public) isOwnFile=\(isOwnFile, privacy: .public) rewritten to \(name, privacy: .public)")
-            } else {
-                Self.savePanelLog.info("save: chosen=\(chosen, privacy: .public) type=\(typeName, privacy: .public) proposed=\(proposed ?? "nil", privacy: .public) targetExists=\(targetExists, privacy: .public) isOwnFile=\(isOwnFile, privacy: .public) kept")
-            }
+        if saveOperation == .saveAsOperation || (saveOperation == .saveOperation && fileURL == nil) {
+            Self.savePanelLog.info("save: url=\(url.lastPathComponent, privacy: .public) type=\(typeName, privacy: .public)")
         }
         tilde_save(to: url, ofType: typeName, for: saveOperation, completionHandler: completionHandler)
     }
@@ -276,5 +251,73 @@ extension NSDocument {
         duplicate.sourcePermissions = Self.posixPermissions(at: fileURL) ?? sourcePermissions
         duplicate.sourceURL = fileURL ?? sourceURL
         return duplicate
+    }
+}
+
+/// Sits in front of the save panel's own delegate (NSDocument's) and
+/// forwards everything to it, except that a confirmed name that is only
+/// the proposed name plus AppKit's `.txt` is returned without `.txt`.
+/// Renaming in the panel, not at save time, keeps the file inside the
+/// sandbox's grant for the URL the panel returns.
+final class SavePanelNameDelegate: NSObject, NSOpenSavePanelDelegate {
+    private weak var original: NSOpenSavePanelDelegate?
+    private let proposed: String
+    private let ownFile: URL?
+    private static var key = 0
+
+    private init(original: NSOpenSavePanelDelegate?, proposed: String, ownFile: URL?) {
+        self.original = original
+        self.proposed = proposed
+        self.ownFile = ownFile
+    }
+
+    static func install(on panel: NSSavePanel, proposed: String, ownFile: URL?) {
+        let original = panel.delegate
+        if let current = original as? SavePanelNameDelegate {
+            current.uninstall(from: panel)
+            return install(on: panel, proposed: proposed, ownFile: ownFile)
+        }
+        let proxy = SavePanelNameDelegate(original: original, proposed: proposed, ownFile: ownFile)
+        // The panel's delegate is weak: the panel keeps the proxy alive.
+        objc_setAssociatedObject(panel, &key, proxy, .OBJC_ASSOCIATION_RETAIN_NONATOMIC)
+        panel.delegate = proxy
+    }
+
+    private func uninstall(from panel: NSSavePanel) {
+        panel.delegate = original
+        objc_setAssociatedObject(panel, &Self.key, nil, .OBJC_ASSOCIATION_RETAIN_NONATOMIC)
+    }
+
+    override func responds(to selector: Selector!) -> Bool {
+        super.responds(to: selector) || (original?.responds(to: selector) ?? false)
+    }
+
+    override func forwardingTarget(for selector: Selector!) -> Any? {
+        original?.responds(to: selector) == true ? original : nil
+    }
+
+    func panel(_ sender: Any, userEnteredFilename filename: String, confirmed okFlag: Bool) -> String? {
+        let log = NSDocument.savePanelLog
+        var name: String? = filename
+        if let original, original.responds(to: #selector(NSOpenSavePanelDelegate.panel(_:userEnteredFilename:confirmed:))) {
+            name = original.panel?(sender, userEnteredFilename: filename, confirmed: okFlag)
+        }
+        guard okFlag, let entered = name else {
+            log.info("delegate: confirmed=\(okFlag, privacy: .public) entered=\(filename, privacy: .public) returned=\(name ?? "nil", privacy: .public)")
+            return name
+        }
+        let directory = (sender as? NSSavePanel)?.directoryURL
+        var targetExists = false
+        var isOwnFile = false
+        if let candidate = NSDocument.savePanelNameToRestore(entered, proposed: proposed), candidate != entered,
+           let target = directory?.appendingPathComponent(candidate) {
+            targetExists = FileManager.default.fileExists(atPath: target.path)
+            isOwnFile = ownFile.map {
+                $0.standardizedFileURL.resolvingSymlinksInPath() == target.standardizedFileURL.resolvingSymlinksInPath()
+            } ?? false
+        }
+        let result = NSDocument.savedName(entered, proposed: proposed, targetExists: targetExists, isOwnFile: isOwnFile) ?? entered
+        log.info("delegate: confirmed=true entered=\(filename, privacy: .public) proposed=\(self.proposed, privacy: .public) dir=\(directory?.path ?? "nil", privacy: .public) targetExists=\(targetExists, privacy: .public) isOwnFile=\(isOwnFile, privacy: .public) returned=\(result, privacy: .public)")
+        return result
     }
 }
