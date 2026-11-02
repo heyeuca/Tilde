@@ -72,6 +72,10 @@ build_and_run UndoSelectionTests \
     Tilde/Editor/NSTextView+UndoableEdit.swift \
     Tests/UndoSelectionTests/main.swift || status=1
 
+build_and_run FontZoomTests \
+    Tilde/Settings/FontZoom.swift \
+    Tests/FontZoomTests/main.swift || status=1
+
 build_and_run LocalizationTests \
     Tests/LocalizationTests/main.swift || status=1
 
