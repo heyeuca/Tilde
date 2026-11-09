@@ -111,28 +111,6 @@
         }
       }
     },
-    "Blank Window Shortcut" : {
-      "localizations" : {
-        "ja" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "空のウインドウのショートカット"
-          }
-        },
-        "ko" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "빈 창 단축키"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "空白窗口快捷键"
-          }
-        }
-      }
-    },
     "Bold" : {
       "localizations" : {
         "ja" : {
@@ -398,6 +376,28 @@
         }
       }
     },
+    "Keyboard Shortcuts" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "キーボードショートカット"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "키보드 단축키"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "键盘快捷键"
+          }
+        }
+      }
+    },
     "Light" : {
       "localizations" : {
         "ja" : {
@@ -482,6 +482,28 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Markdown 样式"
+          }
+        }
+      }
+    },
+    "New Window" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "新規ウインドウ"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "새 창"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "新建窗口"
           }
         }
       }

@@ -44,16 +44,16 @@ struct SettingsView: View {
 
             #if canImport(KeyboardShortcuts)
             // Global shortcut for a blank window (#62); empty until recorded.
-            Section {
+            Section("Keyboard Shortcuts") {
                 KeyboardShortcuts.Recorder(for: .openBlankWindow) {
-                    Text("Blank Window Shortcut")
+                    Text("New Window")
                 }
             }
             #endif
         }
         .formStyle(.grouped)
         .scrollDisabled(true)
-        .frame(width: 380, height: 428)
+        .frame(width: 380, height: 452)
         .onChange(of: appearance) { _, newValue in
             newValue.apply()
         }
