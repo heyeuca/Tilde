@@ -44,16 +44,20 @@ struct SettingsView: View {
 
             #if canImport(KeyboardShortcuts)
             // Global shortcut for a blank window (#62); empty until recorded.
-            Section("Keyboard Shortcuts") {
+            Section {
                 KeyboardShortcuts.Recorder(for: .openBlankWindow) {
-                    Text("New Window")
+                    Text("Quick Document")
                 }
+            } header: {
+                Text("Keyboard Shortcuts")
+            } footer: {
+                Text("Opens a blank document from any app while Tilde is open.")
             }
             #endif
         }
         .formStyle(.grouped)
         .scrollDisabled(true)
-        .frame(width: 380, height: 452)
+        .frame(width: 380, height: 490)
         .onChange(of: appearance) { _, newValue in
             newValue.apply()
         }

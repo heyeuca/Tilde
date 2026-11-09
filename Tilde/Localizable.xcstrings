@@ -486,28 +486,6 @@
         }
       }
     },
-    "New Window" : {
-      "localizations" : {
-        "ja" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "新規ウインドウ"
-          }
-        },
-        "ko" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "새 창"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "新建窗口"
-          }
-        }
-      }
-    },
     "more" : {
       "localizations" : {
         "ja" : {
@@ -548,6 +526,50 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "未完成"
+          }
+        }
+      }
+    },
+    "Opens a blank document from any app while Tilde is open." : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Tildeが開いているとき、任意のアプリから空の書類を開きます。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Tilde가 열려 있을 때 어떤 앱에서든 빈 문서를 엽니다."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Tilde 打开时，可从任何App打开空白文稿。"
+          }
+        }
+      }
+    },
+    "Quick Document" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "クイック書類"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "빠른 문서"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "快速文稿"
           }
         }
       }
