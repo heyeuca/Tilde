@@ -535,19 +535,19 @@
         "ja" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Tildeが開いているとき、任意のアプリから空の書類を開きます。"
+            "value" : "Tilde が開いている間は、任意のアプリから空の書類を開きます。"
           }
         },
         "ko" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Tilde가 열려 있을 때 어떤 앱에서든 빈 문서를 엽니다."
+            "value" : "Tilde가 열려 있는 동안 어떤 앱에서든 빈 문서를 엽니다."
           }
         },
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Tilde 打开时，可从任何App打开空白文稿。"
+            "value" : "Tilde 打开时，可从任何 App 打开空白文稿。"
           }
         }
       }
