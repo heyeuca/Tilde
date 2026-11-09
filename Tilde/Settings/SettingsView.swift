@@ -4,6 +4,9 @@
 //
 
 import SwiftUI
+#if canImport(KeyboardShortcuts)
+import KeyboardShortcuts
+#endif
 
 /// Tilde's entire settings, on one screen (PRODUCT.md §22).
 struct SettingsView: View {
@@ -38,10 +41,19 @@ struct SettingsView: View {
             Section("Markdown") {
                 Toggle("Markdown Styling", isOn: $markdownStyling)
             }
+
+            #if canImport(KeyboardShortcuts)
+            // Global shortcut for a blank window (#62); empty until recorded.
+            Section {
+                KeyboardShortcuts.Recorder(for: .openBlankWindow) {
+                    Text("Blank Window Shortcut")
+                }
+            }
+            #endif
         }
         .formStyle(.grouped)
         .scrollDisabled(true)
-        .frame(width: 380, height: 384)
+        .frame(width: 380, height: 428)
         .onChange(of: appearance) { _, newValue in
             newValue.apply()
         }

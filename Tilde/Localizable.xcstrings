@@ -111,6 +111,28 @@
         }
       }
     },
+    "Blank Window Shortcut" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "空のウインドウのショートカット"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "빈 창 단축키"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "空白窗口快捷键"
+          }
+        }
+      }
+    },
     "Bold" : {
       "localizations" : {
         "ja" : {
