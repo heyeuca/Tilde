@@ -29,6 +29,10 @@ final class EditorTextView: NSTextView {
     /// Markdown documents; see EditorTextView+MarkdownEditing.swift.
     var formatsMarkdown = false
 
+    /// Trackpad pinch changes the shared font size (#4).
+    private let pinchFontSize = PinchFontSizeTracker()
+    override func magnify(with event: NSEvent) { pinchFontSize.handle(event) }
+
     override var textContainerOrigin: NSPoint {
         var origin = super.textContainerOrigin
         origin.x -= textOriginShiftX

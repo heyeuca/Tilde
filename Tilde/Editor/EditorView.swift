@@ -55,6 +55,7 @@ struct EditorView: View {
                     fontSize: clampedFontSize,
                     fileURL: fileURL,
                     entryFraction: { scrollBridge.readFraction() },
+                    exitFraction: { scrollBridge.scrollToFraction($0) },
                     onExit: { isReaderMode = false }
                 )
             }
