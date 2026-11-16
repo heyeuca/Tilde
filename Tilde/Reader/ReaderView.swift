@@ -110,12 +110,6 @@ struct ReaderView: NSViewRepresentable {
             object: textView
         )
 
-        // Become first responder so Esc (cancelOperation) reaches this view.
-        // The find bar, when open, takes the responder chain first, so ⌘F's
-        // own Esc still closes the search before this exits Reader.
-        DispatchQueue.main.async { [weak textView] in
-            textView?.window?.makeFirstResponder(textView)
-        }
         return scrollView
     }
 
@@ -384,6 +378,22 @@ struct ReaderView: NSViewRepresentable {
     private final class ExitingTextView: NSTextView {
         var onExit: (() -> Void)?
         override func cancelOperation(_ sender: Any?) { onExit?() }
+
+        /// Become first responder so Esc (cancelOperation) reaches this view.
+        /// Claimed when the view lands in its window, not one runloop after
+        /// creation: entering Reader from the View menu or the title-bar
+        /// toggle, the view had no window yet by then, so the claim was
+        /// skipped and Esc did nothing. (⌘⇧R happened to mount it in time.)
+        /// The find bar, when open, takes the responder chain first, so ⌘F's
+        /// own Esc still closes the search before this exits Reader.
+        override func viewDidMoveToWindow() {
+            super.viewDidMoveToWindow()
+            guard window != nil else { return }
+            DispatchQueue.main.async { [weak self] in
+                guard let self, let window = self.window else { return }
+                window.makeFirstResponder(self)
+            }
+        }
 
         /// Trackpad pinch changes the shared font size (#4).
         private let pinchFontSize = PinchFontSizeTracker()
