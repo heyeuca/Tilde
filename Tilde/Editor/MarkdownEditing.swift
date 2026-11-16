@@ -60,16 +60,29 @@ nonisolated enum MarkdownEditing {
     /// `**x**` stacks to `***x***` instead of stripping one side of the bold.
     /// A line prefix (`#`, `>`, a list bullet or number, a task box) in the
     /// selection stays outside the markers, so a whole `* item` line becomes
-    /// `* **item**`. An empty selection inserts the empty pair with the caret
-    /// inside; a selection spanning lines (or only whitespace or a prefix)
+    /// `* **item**`. An empty selection between `*` runs applies the same
+    /// rule to the empty core, so a second ⌘B takes back an empty `****`;
+    /// anywhere else it inserts the empty pair with the caret inside. A
+    /// selection spanning lines (or only whitespace or a prefix)
     /// returns `nil`, and so does a core whose own `*` runs close the
     /// markers around it early.
     static func toggleEmphasis(_ emphasis: Emphasis, in text: NSString, selection: NSRange) -> Edit? {
         let m = emphasis.markerLength
         if selection.length == 0 {
-            let pair = String(repeating: "*", count: m * 2)
-            return Edit(range: selection, replacement: pair,
-                        selection: NSRange(location: selection.location + m, length: 0))
+            let caret = selection.location
+            let line = text.lineRange(for: selection)
+            let markers = min(runBackward(of: "*", in: text, from: caret, downTo: line.location),
+                              run(of: "*", in: text, from: caret, upTo: NSMaxRange(line)))
+            guard markers > 0 else {
+                let pair = String(repeating: "*", count: m * 2)
+                return Edit(range: selection, replacement: pair,
+                            selection: NSRange(location: caret + m, length: 0))
+            }
+            let newMarkers = isPresent(emphasis, markers: markers) ? markers - m : markers + m
+            let stars = String(repeating: "*", count: newMarkers)
+            return Edit(range: NSRange(location: caret - markers, length: markers * 2),
+                        replacement: stars + stars,
+                        selection: NSRange(location: caret - markers + newMarkers, length: 0))
         }
         guard var core = trimmedSingleLine(text, selection) else { return nil }
         let line = text.lineRange(for: core)
@@ -97,18 +110,22 @@ nonisolated enum MarkdownEditing {
         // `**one** and **two**`: the edge markers belong to two spans, not one around the core.
         if markers > 0, !innerRunsBalance(text, core) { return nil }
 
-        let present: Bool
-        switch emphasis {
-        case .bold: present = markers == 2 || markers == 3
-        case .italic: present = markers == 1 || markers == 3
-        }
-        let newMarkers = present ? markers - m : markers + m
+        let newMarkers = isPresent(emphasis, markers: markers) ? markers - m : markers + m
         let stars = String(repeating: "*", count: newMarkers)
         return Edit(
             range: NSRange(location: core.location - markers, length: core.length + markers * 2),
             replacement: stars + text.substring(with: core) + stars,
             selection: NSRange(location: core.location - markers + newMarkers, length: core.length)
         )
+    }
+
+    /// Whether a `*` run of this length already carries the emphasis:
+    /// 2 or 3 is bold, 1 or 3 is italic.
+    private static func isPresent(_ emphasis: Emphasis, markers: Int) -> Bool {
+        switch emphasis {
+        case .bold: markers == 2 || markers == 3
+        case .italic: markers == 1 || markers == 3
+        }
     }
 
     // MARK: - Links

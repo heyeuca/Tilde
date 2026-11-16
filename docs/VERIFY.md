@@ -80,6 +80,42 @@ runners, and the unsigned smoke bundle).
       Esc then type — same (regression-tested by `Tests/ui_smoke.sh` on
       the dev machine)
 
+## Quit and relaunch (#44)
+
+Tilde registers `NSQuitAlwaysKeepsWindows` true, so quitting keeps windows
+even with the system setting "Close windows when quitting an application" at
+its default. Checked on an ad-hoc signed, sandboxed Debug build; re-check on
+a release build.
+
+- [ ] ⌘Q with an untitled window that has text: no alert; relaunch brings it
+      back with its text, still "Untitled", still edited (⌘W asks to save)
+      (regression-tested by `Tests/ui_smoke.sh`)
+- [ ] Untitled windows that are blank, never typed in or emptied, don't come
+      back, and a launch that restores something adds no blank window. A
+      launch that restores nothing opens one blank Untitled window
+- [ ] Typing text into an untitled window, deleting all of it (Delete key,
+      or ⌘A then Delete), then ⌘W: closes without asking. Undo back to the
+      empty text: same
+- [ ] File-backed document with recent edits: edits are on disk at quit, and
+      the window reopens to the same file
+- [ ] Force quit: text autosaved before the kill comes back. Text typed in
+      the last few seconds can be lost: macOS hasn't autosaved it yet, as
+      without #44
+- [ ] "Close windows when quitting an application" turned on explicitly
+      (toggled off and on in System Settings, which writes a global
+      `NSQuitAlwaysKeepsWindows` false; or `-NSQuitAlwaysKeepsWindows NO`):
+      ⌘Q shows "You have N untitled Tilde documents…" with Review Changes… /
+      Delete and Quit, as before #44. Untouched, the key is absent and
+      Tilde's registered default applies
+- [ ] "Ask to keep changes when closing documents" on: ⌘Q still keeps
+      windows without an alert; ⌘W keeps its prompt
+- [ ] Launch with ⌥ held (`-ApplePersistenceIgnoreState YES`): one blank
+      window. That session doesn't overwrite the saved state, so the next
+      normal launch brings the untitled text back
+- [ ] Reader on at quit: the window comes back in the editor, not Reader
+- [ ] Logout and restart: same as ⌘Q (UNVERIFIED)
+- [ ] Sparkle Install Update relaunch: untitled text comes back (UNVERIFIED)
+
 ## Performance (targets from PRODUCT.md §28)
 
 - [ ] Cold launch < 500 ms perceived (smoke bundle measured ~225 ms

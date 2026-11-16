@@ -59,14 +59,13 @@ extension EditorTextView {
     /// Applies an edit the way typing does — `shouldChangeText` registers
     /// undo and `didChangeText` notifies the delegate — so undo, the dirty
     /// state, the styler's incremental restyle, and the gutter all see an
-    /// ordinary edit. The coalescing breaks keep it one undo step, separate
+    /// ordinary edit. Undo and redo also restore the selection that went
+    /// with the text, so ⌘B then ⌘Z gives back the selected word, not just a
+    /// caret (#42). The coalescing breaks keep it one undo step, separate
     /// from typing on either side.
     func applyMarkdownEdit(_ edit: MarkdownEditing.Edit, actionName: String?) {
         breakUndoCoalescing()
-        guard shouldChangeText(in: edit.range, replacementString: edit.replacement) else { return }
-        replaceCharacters(in: edit.range, with: edit.replacement)
-        didChangeText()
-        setSelectedRange(edit.selection)
+        guard replaceRestoringSelectionOnUndo(edit.range, with: edit.replacement, selecting: edit.selection) else { return }
         if let actionName { undoManager?.setActionName(actionName) }
         breakUndoCoalescing()
     }

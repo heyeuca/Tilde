@@ -88,6 +88,7 @@ struct TextEditorView: NSViewRepresentable {
         let textView = EditorTextView(frame: .zero, textContainer: container)
         textView.delegate = context.coordinator
         textView.linkBaseURL = fileURL?.deletingLastPathComponent()
+        textView.isUntitled = fileURL == nil
 
         // Editing behavior
         textView.allowsUndo = true
@@ -137,7 +138,10 @@ struct TextEditorView: NSViewRepresentable {
         context.coordinator.undoManager = context.environment.undoManager
 
         guard let textView = scrollView.documentView as? NSTextView else { return }
-        (textView as? EditorTextView)?.linkBaseURL = fileURL?.deletingLastPathComponent()
+        if let editorView = textView as? EditorTextView {
+            editorView.linkBaseURL = fileURL?.deletingLastPathComponent()
+            editorView.isUntitled = fileURL == nil
+        }
 
         // A new document instance (e.g. Revert To) swaps the backing storage.
         if context.coordinator.attachedDocument !== document {

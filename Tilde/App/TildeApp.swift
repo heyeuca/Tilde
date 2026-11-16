@@ -15,8 +15,13 @@ struct TildeApp: App {
     init() {
         // Launching without a document creates a blank one (PRODUCT.md §10)
         // instead of the open panel document apps show by default.
+        // Quitting keeps windows (#44): untitled documents come back with
+        // their text instead of a "review before quitting" alert. Registered,
+        // so it only changes Tilde's default: an explicit value in the global
+        // domain or Tilde's own still wins.
         UserDefaults.standard.register(defaults: [
             "NSShowAppCentricOpenPanelInsteadOfUntitledFile": false,
+            "NSQuitAlwaysKeepsWindows": true,
         ])
         AppearanceSetting.applyAtLaunch()
         NSDocument.keepFileTypeAndPermissionsOnCopies()

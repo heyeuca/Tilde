@@ -59,13 +59,22 @@ final class EditorTextView: NSTextView {
     /// responder (the find bar's field editor, a sheet) is never robbed.
     override func viewDidMoveToWindow() {
         super.viewDidMoveToWindow()
+        updateWindowRestorability()
         guard window != nil else { return }
+        observeUndoForRestorability()
         DispatchQueue.main.async { [weak self] in
             guard let self, let window = self.window else { return }
             if window.firstResponder === window {
                 window.makeFirstResponder(self)
             }
         }
+    }
+
+    /// Whether the document has no file yet, set by the coordinator: a
+    /// blank untitled window isn't brought back after quitting (see
+    /// EditorTextView+Restoration.swift).
+    var isUntitled = false {
+        didSet { updateWindowRestorability() }
     }
 
     /// What Tab inserts and ⇧Tab removes, set by the coordinator

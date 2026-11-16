@@ -793,6 +793,40 @@ do {
 }
 
 do {
+    // No selection, caret between * runs: the same run-count rule as a selection (#43).
+    func toggle(_ emphasis: MarkdownEditing.Emphasis, _ text: String, caret: Int) -> (text: String, selection: NSRange)? {
+        applying(MarkdownEditing.toggleEmphasis(emphasis, in: text as NSString, selection: NSRange(location: caret, length: 0)), to: text)
+    }
+    let caret = { (r: (text: String, selection: NSRange)?) in r?.selection == NSRange(location: 2, length: 0) }
+    var r = toggle(.bold, "a **** b", caret: 4)
+    expect(r?.text == "a  b" && caret(r), "⌘B inside an empty **** removes the pair")
+    r = toggle(.italic, "a ** b", caret: 3)
+    expect(r?.text == "a  b" && caret(r), "⌘I inside an empty ** removes the pair")
+    r = toggle(.italic, "a **** b", caret: 4)
+    expect(r?.text == "a ****** b" && r?.selection == NSRange(location: 5, length: 0), "⌘I inside an empty **** stacks to ******")
+    r = toggle(.bold, "a ** b", caret: 3)
+    expect(r?.text == "a ****** b" && r?.selection == NSRange(location: 5, length: 0), "⌘B inside an empty ** stacks to ******")
+    r = toggle(.bold, "a ****** b", caret: 5)
+    expect(r?.text == "a ** b" && r?.selection == NSRange(location: 3, length: 0), "⌘B inside an empty ****** leaves **")
+
+    // Round trips from an empty line.
+    let b1 = toggle(.bold, "ab", caret: 1)!
+    let b2 = applying(MarkdownEditing.toggleEmphasis(.bold, in: b1.text as NSString, selection: b1.selection), to: b1.text)
+    expect(b2?.text == "ab" && b2?.selection == NSRange(location: 1, length: 0), "⌘B twice with no selection gives back the original")
+    let i1 = toggle(.italic, "ab", caret: 1)!
+    let i2 = applying(MarkdownEditing.toggleEmphasis(.italic, in: i1.text as NSString, selection: i1.selection), to: i1.text)
+    expect(i2?.text == "ab" && i2?.selection == NSRange(location: 1, length: 0), "⌘I twice with no selection gives back the original")
+
+    // Not between markers: still inserts the pair.
+    r = toggle(.bold, "a  b", caret: 2)
+    expect(r?.text == "a **** b" && r?.selection == NSRange(location: 4, length: 0), "caret not between markers inserts ****")
+    r = toggle(.bold, "**x** b", caret: 5)
+    expect(r?.text == "**x****** b" && r?.selection == NSRange(location: 7, length: 0), "caret just after a closing marker inserts ****")
+    r = toggle(.italic, "**\nx", caret: 3)
+    expect(r?.text == "**\n**x" && r?.selection == NSRange(location: 4, length: 0), "markers on another line don't count")
+}
+
+do {
     // A line prefix stays outside the markers.
     for (line, expected) in [("* item\n", "* **item**\n"), ("- item\n", "- **item**\n"), ("1. item\n", "1. **item**\n"),
                              ("2) item\n", "2) **item**\n"), ("# item\n", "# **item**\n"), ("> item\n", "> **item**\n"),
