@@ -1,4 +1,4 @@
-# App Store Connect Listing (Tilde v1.4.0)
+# App Store Connect Listing (Tilde v1.5.0)
 
 The limits below are App Store Connect's. Run `python3 scripts/check_listing.py` before pasting any field into App Store Connect: it checks every field's length and its characters.
 
@@ -29,7 +29,7 @@ Describe any other character in words, as What's New does for control codes ("sh
 | --- | --- |
 | Bundle ID | `co.euca.Tilde` |
 | SKU | `tilde-macos` |
-| Version | `1.4.0` |
+| Version | `1.5.0` |
 | Primary Language | English (U.S.) |
 | Primary Category | Productivity |
 | Secondary Category | Developer Tools |
@@ -159,10 +159,11 @@ Just open the file.
 
 **What's New in This Version**
 ```
-• New Format menu for Markdown: Bold (⌘B) and Italic (⌘I) wrap the selection in Markdown markers or take them off, and Add Link (⌘K) turns the selection into a link, using a URL you have copied. Typing *, _, `, ~, [, ( or " over a selection wraps it instead of replacing it
-• Copying a task list from Reader as plain text now gives empty and checked box characters instead of an invisible placeholder
-• Links whose address contains parentheses, like Wikipedia's, and README badges are now styled as one link in the editor, and ⌘-click opens the full address
-• Save As and Duplicate keep a file's extension, such as .json or .sh, and its permissions, so a copy of a private key stays private
+• Untitled windows come back after you quit: ⌘Q no longer asks you to review untitled documents, and the next launch brings each one back with its text. Blank windows don't come back
+• Leaving Reader returns the editor to the place you were reading. The caret and selection stay where they were
+• Pinch on the trackpad to change the font size, in the editor and in Reader
+• Undoing Bold, Italic, Add Link, Tab or ⇧Tab restores the selection you had, and redo restores it too
+• Pressing ⌘B or ⌘I again inside an empty pair of markers removes the pair instead of adding another
 ```
 
 ---
@@ -235,10 +236,11 @@ Tilde는 MIT 라이선스의 오픈 소스입니다.
 
 **What's New in This Version**
 ```
-• Markdown용 포맷 메뉴가 생겼습니다. 볼드체(⌘B)와 이탤릭체(⌘I)는 선택한 텍스트를 Markdown 기호로 감싸거나 기호를 걷어 내고, 링크 추가(⌘K)는 복사해 둔 URL로 선택한 텍스트를 링크로 만듭니다. 텍스트를 선택한 채 *, _, `, ~, [, (, "를 입력하면 지우지 않고 감쌉니다
-• Reader에서 작업 목록을 일반 텍스트로 복사하면 보이지 않는 대체 문자 대신 빈 상자와 체크된 상자 문자가 들어갑니다
-• 위키백과처럼 주소에 괄호가 들어간 링크와 README 배지를 편집기에서 하나의 링크로 표시하고, ⌘-클릭하면 전체 주소를 엽니다
-• 다른 이름으로 저장과 복제가 .json, .sh 같은 확장자와 파일 권한을 유지합니다. 비밀 키의 사본도 나만 읽을 수 있게 남습니다
+• 종료해도 제목 없는 창이 돌아옵니다. ⌘Q를 눌러도 제목 없는 문서를 검토하겠냐고 묻지 않고, 다음에 실행하면 각 창이 내용과 함께 다시 열립니다. 빈 창은 다시 열리지 않습니다
+• Reader에서 나오면 편집기가 읽던 위치로 스크롤됩니다. 캐럿과 선택 영역은 그대로입니다
+• 트랙패드를 핀치해 글자 크기를 바꿀 수 있습니다. 편집기와 Reader 모두에서 됩니다
+• 볼드체, 이탤릭체, 링크 추가, Tab, ⇧Tab을 실행 취소하면 원래 선택 영역이 복원되고, 다시 실행해도 선택 영역이 복원됩니다
+• 빈 기호 쌍 안에서 ⌘B나 ⌘I를 다시 누르면 기호를 더 넣는 대신 그 쌍을 지웁니다
 ```
 
 ---
@@ -311,10 +313,11 @@ TildeはMITライセンスのオープンソースです。
 
 **What's New in This Version**
 ```
-• Markdown用のフォーマットメニューを追加しました。ボールド(⌘B)とイタリック(⌘I)は選択範囲をMarkdownの記号で囲む、または記号を外します。リンクを追加(⌘K)は、コピーしたURLで選択範囲をリンクにします。テキストを選択したまま *、_、`、~、[、(、" を入力すると、置き換えずに囲みます
-• リーダーモードでタスクリストをプレーンテキストとしてコピーすると、見えない代替文字ではなく、空のチェックボックスとチェック済みのチェックボックスの文字になります
-• Wikipediaのように括弧を含むアドレスのリンクやREADMEのバッジを、エディタで1つのリンクとして表示し、⌘-クリックでアドレス全体を開きます
-• 「別名で保存」と「複製」で、.jsonや.shなどの拡張子とファイルのアクセス権を保つようになりました。秘密鍵のコピーも自分だけが読める状態のままです
+• 終了しても名称未設定のウィンドウが戻ります。⌘Qで名称未設定の書類を確認するか尋ねなくなり、次回の起動時にそれぞれのウィンドウがテキストとともに開きます。空のウィンドウは戻りません
+• リーダーモードを終了すると、エディタが読んでいた位置までスクロールします。キャレットと選択範囲はそのままです
+• トラックパッドのピンチで文字サイズを変更できます。エディタでもリーダーモードでも使えます
+• ボールド、イタリック、リンクを追加、Tab、⇧Tabを取り消すと元の選択範囲が戻り、やり直しても選択範囲が戻ります
+• 空の記号の組の中で⌘Bまたは⌘Iをもう一度押すと、記号を追加せずにその組を削除します
 ```
 
 ---
@@ -387,8 +390,9 @@ Tilde 基于 MIT 许可证开源。
 
 **What's New in This Version**
 ```
-• 新增 Markdown 格式菜单:粗体(⌘B)和斜体(⌘I)用 Markdown 标记包裹所选文本或移除标记,添加链接(⌘K)用已拷贝的网址把所选文本变成链接。选中文本后输入 *、_、`、~、[、( 或 ",会包裹所选文本而不是替换它
-• 在阅读模式中将任务列表拷贝为纯文本时,会得到空框和已勾选框字符,而不是不可见的占位符
-• 网址中含有括号的链接(如维基百科)和 README 徽章现在在编辑器中显示为一个完整链接,按住 ⌘ 点按会打开完整网址
-• 存储为和复制会保留 .json、.sh 等扩展名和文件权限,私钥的副本仍然只有你能读取
+• 退出后未命名窗口会回来:按 ⌘Q 时不再询问是否检查未命名文稿,下次启动时每个窗口连同文本一起恢复。空白窗口不会恢复
+• 退出阅读模式时,编辑器会滚动到你正在阅读的位置。光标和所选内容保持不变
+• 在触控板上双指开合即可调整字号,编辑器和阅读模式中都可以使用
+• 撤销粗体、斜体、添加链接、Tab 或 ⇧Tab 时会恢复原来的所选内容,重做时也会恢复
+• 在一对空标记中再次按 ⌘B 或 ⌘I,会移除这对标记,而不是再添加一对
 ```

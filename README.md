@@ -58,6 +58,7 @@ It is **not** an IDE, a project workspace, a note database, or a Markdown author
 - Interface in English, Korean, Japanese, and Simplified Chinese, following your macOS language
 - Fast launch and near-zero idle resource usage
 - Full macOS integration: Open With, file associations, Recent Documents, Autosave, Versions, Full Screen, window tabs
+- Untitled windows and their text come back after you quit; blank ones don't
 - In-app updates for the GitHub and Homebrew version: **Tilde → Check for Updates…** checks only when you ask (the App Store version is updated by the App Store)
 
 ### Markdown, done lightly
@@ -92,8 +93,8 @@ Tilde follows macOS conventions.
 | Indent / Outdent | `Tab` / `⇧Tab` |
 | Follow link (Markdown) | `⌘`-click |
 | Preferences | `⌘,` |
-| Increase Font | `⌘+` |
-| Decrease Font | `⌘-` |
+| Increase Font | `⌘+` or pinch out |
+| Decrease Font | `⌘-` or pinch in |
 | Reset Font | `⌘0` |
 
 ## Privacy
