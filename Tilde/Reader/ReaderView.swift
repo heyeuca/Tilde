@@ -78,7 +78,7 @@ struct ReaderView: NSViewRepresentable {
         // attribute is what VoiceOver announces, whatever it looks like.
         textView.linkTextAttributes = [.cursor: NSCursor.pointingHand]
 
-        let scrollView = NSScrollView()
+        let scrollView = FocusReturningScrollView()
         scrollView.hasVerticalScroller = true
         scrollView.autohidesScrollers = true
         scrollView.drawsBackground = true
@@ -110,12 +110,6 @@ struct ReaderView: NSViewRepresentable {
             object: textView
         )
 
-        // Become first responder so Esc (cancelOperation) reaches this view.
-        // The find bar, when open, takes the responder chain first, so ⌘F's
-        // own Esc still closes the search before this exits Reader.
-        DispatchQueue.main.async { [weak textView] in
-            textView?.window?.makeFirstResponder(textView)
-        }
         return scrollView
     }
 
@@ -376,6 +370,22 @@ struct ReaderView: NSViewRepresentable {
         }
     }
 
+    /// Scroll view that hands focus back to the text when the find bar
+    /// closes. The bar's search field holds first responder while it is
+    /// open; closing it left the window with none, so the next Esc never
+    /// reached `cancelOperation` and Reader couldn't be left with it.
+    private final class FocusReturningScrollView: NSScrollView {
+        override var isFindBarVisible: Bool {
+            didSet {
+                guard oldValue, !isFindBarVisible else { return }
+                DispatchQueue.main.async { [weak self] in
+                    guard let self, let documentView = self.documentView else { return }
+                    self.window?.makeFirstResponder(documentView)
+                }
+            }
+        }
+    }
+
     /// NSTextView that leaves Reader on Esc, copies checkboxes as text, and
     /// paints one rounded band behind each code listing. The renderer tags
     /// listings with `codeBlockMarker` instead of giving their NSTextBlock
@@ -384,6 +394,22 @@ struct ReaderView: NSViewRepresentable {
     private final class ExitingTextView: NSTextView {
         var onExit: (() -> Void)?
         override func cancelOperation(_ sender: Any?) { onExit?() }
+
+        /// Become first responder so Esc (cancelOperation) reaches this view.
+        /// Claimed when the view lands in its window, not one runloop after
+        /// creation: entering Reader from the View menu or the title-bar
+        /// toggle, the view had no window yet by then, so the claim was
+        /// skipped and Esc did nothing. (⌘⇧R happened to mount it in time.)
+        /// The find bar, when open, takes the responder chain first, so ⌘F's
+        /// own Esc still closes the search before this exits Reader.
+        override func viewDidMoveToWindow() {
+            super.viewDidMoveToWindow()
+            guard window != nil else { return }
+            DispatchQueue.main.async { [weak self] in
+                guard let self, let window = self.window else { return }
+                window.makeFirstResponder(self)
+            }
+        }
 
         /// Trackpad pinch changes the shared font size (#4).
         private let pinchFontSize = PinchFontSizeTracker()
