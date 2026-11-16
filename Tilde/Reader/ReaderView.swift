@@ -78,7 +78,7 @@ struct ReaderView: NSViewRepresentable {
         // attribute is what VoiceOver announces, whatever it looks like.
         textView.linkTextAttributes = [.cursor: NSCursor.pointingHand]
 
-        let scrollView = NSScrollView()
+        let scrollView = FocusReturningScrollView()
         scrollView.hasVerticalScroller = true
         scrollView.autohidesScrollers = true
         scrollView.drawsBackground = true
@@ -367,6 +367,22 @@ struct ReaderView: NSViewRepresentable {
         @objc func viewFrameDidChange(_ notification: Notification) {
             guard let scrollView = textView?.enclosingScrollView else { return }
             centerContent(in: scrollView)
+        }
+    }
+
+    /// Scroll view that hands focus back to the text when the find bar
+    /// closes. The bar's search field holds first responder while it is
+    /// open; closing it left the window with none, so the next Esc never
+    /// reached `cancelOperation` and Reader couldn't be left with it.
+    private final class FocusReturningScrollView: NSScrollView {
+        override var isFindBarVisible: Bool {
+            didSet {
+                guard oldValue, !isFindBarVisible else { return }
+                DispatchQueue.main.async { [weak self] in
+                    guard let self, let documentView = self.documentView else { return }
+                    self.window?.makeFirstResponder(documentView)
+                }
+            }
         }
     }
 
