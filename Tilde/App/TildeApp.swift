@@ -25,6 +25,9 @@ struct TildeApp: App {
         ])
         AppearanceSetting.applyAtLaunch()
         NSDocument.keepFileTypeAndPermissionsOnCopies()
+        #if canImport(KeyboardShortcuts)
+        BlankWindowShortcut.startListening()
+        #endif
     }
 
     var body: some Scene {
