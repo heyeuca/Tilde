@@ -59,6 +59,7 @@ It is **not** an IDE, a project workspace, a note database, or a Markdown author
 - Fast launch and near-zero idle resource usage
 - Full macOS integration: Open With, file associations, Recent Documents, Autosave, Versions, Full Screen, window tabs
 - Untitled windows and their text come back after you quit; blank ones don't
+- Quick Document: an optional global shortcut, recorded in **Settings ▸ Keyboard Shortcuts**, opens a blank document from any app while Tilde is open
 - In-app updates for the GitHub and Homebrew version: **Tilde → Check for Updates…** checks only when you ask (the App Store version is updated by the App Store)
 
 ### Markdown, done lightly

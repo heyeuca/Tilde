@@ -1,4 +1,4 @@
-# App Store Connect Listing (Tilde v1.5.0)
+# App Store Connect Listing (Tilde v1.5.1)
 
 The limits below are App Store Connect's. Run `python3 scripts/check_listing.py` before pasting any field into App Store Connect: it checks every field's length and its characters.
 
@@ -29,7 +29,7 @@ Describe any other character in words, as What's New does for control codes ("sh
 | --- | --- |
 | Bundle ID | `co.euca.Tilde` |
 | SKU | `tilde-macos` |
-| Version | `1.5.0` |
+| Version | `1.5.1` |
 | Primary Language | English (U.S.) |
 | Primary Category | Productivity |
 | Secondary Category | Developer Tools |
@@ -159,11 +159,9 @@ Just open the file.
 
 **What's New in This Version**
 ```
-• Untitled windows come back after you quit: ⌘Q no longer asks you to review untitled documents, and the next launch brings each one back with its text. Blank windows don't come back
-• Leaving Reader returns the editor to the place you were reading. The caret and selection stay where they were
-• Pinch on the trackpad to change the font size, in the editor and in Reader
-• Undoing Bold, Italic, Add Link, Tab or ⇧Tab restores the selection you had, and redo restores it too
-• Pressing ⌘B or ⌘I again inside an empty pair of markers removes the pair instead of adding another
+• Quick Document: record a shortcut in Settings, under Keyboard Shortcuts, and press it in any app to open a blank document while Tilde is open. There is no shortcut until you record one
+• Esc leaves Reader however you entered it, including after you close the find bar
+• If another app changes a file while you have unsaved edits in it, your edits are kept, and Tilde asks which version to keep when it next saves. Before, some apps' changes replaced the edits without asking
 ```
 
 ---
@@ -236,11 +234,9 @@ Tilde는 MIT 라이선스의 오픈 소스입니다.
 
 **What's New in This Version**
 ```
-• 종료해도 제목 없는 창이 돌아옵니다. ⌘Q를 눌러도 제목 없는 문서를 검토하겠냐고 묻지 않고, 다음에 실행하면 각 창이 내용과 함께 다시 열립니다. 빈 창은 다시 열리지 않습니다
-• Reader에서 나오면 편집기가 읽던 위치로 스크롤됩니다. 캐럿과 선택 영역은 그대로입니다
-• 트랙패드를 핀치해 글자 크기를 바꿀 수 있습니다. 편집기와 Reader 모두에서 됩니다
-• 볼드체, 이탤릭체, 링크 추가, Tab, ⇧Tab을 실행 취소하면 원래 선택 영역이 복원되고, 다시 실행해도 선택 영역이 복원됩니다
-• 빈 기호 쌍 안에서 ⌘B나 ⌘I를 다시 누르면 기호를 더 넣는 대신 그 쌍을 지웁니다
+• 빠른 문서: 설정의 키보드 단축키에서 단축키를 지정하면, Tilde가 열려 있는 동안 어떤 앱에서든 그 단축키로 빈 문서를 열 수 있습니다. 지정하기 전에는 단축키가 없습니다
+• Reader에 어떤 방법으로 들어갔든 Esc로 나올 수 있습니다. 찾기 막대를 닫은 뒤에도 마찬가지입니다
+• 저장하지 않은 편집 내용이 있는 파일을 다른 앱이 변경해도 편집 내용이 유지되고, 다음에 저장할 때 어느 버전을 남길지 묻습니다. 이전에는 일부 앱의 변경이 묻지 않고 편집 내용을 덮어썼습니다
 ```
 
 ---
@@ -313,11 +309,9 @@ TildeはMITライセンスのオープンソースです。
 
 **What's New in This Version**
 ```
-• 終了しても名称未設定のウィンドウが戻ります。⌘Qで名称未設定の書類を確認するか尋ねなくなり、次回の起動時にそれぞれのウィンドウがテキストとともに開きます。空のウィンドウは戻りません
-• リーダーモードを終了すると、エディタが読んでいた位置までスクロールします。キャレットと選択範囲はそのままです
-• トラックパッドのピンチで文字サイズを変更できます。エディタでもリーダーモードでも使えます
-• ボールド、イタリック、リンクを追加、Tab、⇧Tabを取り消すと元の選択範囲が戻り、やり直しても選択範囲が戻ります
-• 空の記号の組の中で⌘Bまたは⌘Iをもう一度押すと、記号を追加せずにその組を削除します
+• クイック書類: 設定の「キーボードショートカット」でショートカットを登録すると、Tildeが開いている間はどのアプリからでも空の書類を開けます。登録するまでショートカットはありません
+• どの方法でリーダーモードに入っても、Escで終了できます。検索バーを閉じた後も同じです
+• 未保存の編集がある書類を別のアプリが変更しても編集内容は保たれ、次に保存するときにどちらのバージョンを残すか尋ねます。以前は一部のアプリによる変更で、確認なしに編集内容が置き換えられていました
 ```
 
 ---
@@ -390,9 +384,7 @@ Tilde 基于 MIT 许可证开源。
 
 **What's New in This Version**
 ```
-• 退出后未命名窗口会回来:按 ⌘Q 时不再询问是否检查未命名文稿,下次启动时每个窗口连同文本一起恢复。空白窗口不会恢复
-• 退出阅读模式时,编辑器会滚动到你正在阅读的位置。光标和所选内容保持不变
-• 在触控板上双指开合即可调整字号,编辑器和阅读模式中都可以使用
-• 撤销粗体、斜体、添加链接、Tab 或 ⇧Tab 时会恢复原来的所选内容,重做时也会恢复
-• 在一对空标记中再次按 ⌘B 或 ⌘I,会移除这对标记,而不是再添加一对
+• 快速文稿:在设置的键盘快捷键中录制一个快捷键,Tilde 打开时,可在任何 App 中按下它打开空白文稿。录制之前没有快捷键
+• 无论以何种方式进入阅读模式,都可以按 Esc 退出,关闭查找栏后也一样
+• 如果文件有未存储的编辑时被其他 App 更改,你的编辑会保留,Tilde 会在下次存储时询问要保留哪个版本。以前,某些 App 的更改会不经询问就替换你的编辑
 ```
