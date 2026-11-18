@@ -25,6 +25,7 @@ struct TildeApp: App {
         ])
         AppearanceSetting.applyAtLaunch()
         NSDocument.keepFileTypeAndPermissionsOnCopies()
+        NSDocument.keepUnsavedEditsOnExternalWrites()
         #if canImport(KeyboardShortcuts)
         BlankWindowShortcut.startListening()
         #endif

@@ -200,6 +200,12 @@ Three kinds of code say otherwise, each for a reason the compiler can check
     are untouched; they keep the file's own permissions.
   - `duplicate()` hands the new document the source's permissions, since
     the duplicate is read back from a copy AppKit writes as owner-only.
+- A coordinated write by another app doesn't discard unsaved edits (#32,
+  `NSDocument+ExternalWrites.swift`). AppKit's `presentedItemDidChange()`
+  reverts an autosave-in-place document even when it is edited, so it is
+  exchanged at launch and runs only for a clean document, which still
+  reloads. An edited one keeps its text, and its next save shows AppKit's
+  "changed by another application" sheet, as after a plain write.
 - Markdown-ness for styling/Reader follows the LIVE file URL
   (`TextDocument.isMarkdown(openedAsMarkdown:fileURL:)`): the current
   extension wins, so Save As between `.md` and `.txt`/`.json` switches
